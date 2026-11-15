@@ -1,0 +1,20 @@
+name: jcmc
+
+services:
+  fake-api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: fake-api
+    image: jcmc/fake-api:dev
+    # Disjoint CPU set from SUT/k6 (ENVIRONMENT.md); verified in the pilot (E7).
+    cpuset: "4-5"
+    ports:
+      - "8090:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s

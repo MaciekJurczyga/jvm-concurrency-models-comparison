@@ -1,0 +1,21 @@
+# Build
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Raw measurement artifacts are large; per-run summaries and meta.json stay in git
+results/**/*.gz
+results/**/*.zip
+results/**/logs/
+results/**/k6_raw*.csv
