@@ -1,10 +1,9 @@
 name: jcmc
 
-# Both MVC models share one image; only the Spring profile differs (DECISIONS.md, D2).
+# Common SUT settings. Both MVC models share one image; only the Spring profile differs (DECISIONS.md, D2).
 # Provisional SUT limits (plan section 3); the full SUT selection comes with E4.
 # No restart policy: an automatic restart would distort time-to-recovery (DECISIONS.md, D6).
-x-mvc: &mvc
-  image: jcmc/mvc:dev
+x-sut: &sut
   cpuset: "0-3"
   mem_limit: 1g
   depends_on:
@@ -37,7 +36,8 @@ services:
       start_period: 5s
 
   mvc-platform:
-    <<: *mvc
+    <<: *sut
+    image: jcmc/mvc:dev
     # Only this service builds jcmc/mvc; two builds of one tag would race.
     build:
       context: ..
@@ -54,7 +54,8 @@ services:
       - "8081:8080"
 
   mvc-virtual:
-    <<: *mvc
+    <<: *sut
+    image: jcmc/mvc:dev
     pull_policy: never
     environment:
       SPRING_PROFILES_ACTIVE: virtual
@@ -64,3 +65,19 @@ services:
       BCRYPT_COST: "10"
     ports:
       - "8082:8080"
+
+  webflux:
+    <<: *sut
+    image: jcmc/webflux:dev
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: webflux
+    environment:
+      UPSTREAM_URL: http://fake-api:8080
+      IO_DELAY_MS: "100"
+      UPSTREAM_TIMEOUT: 5s
+      BCRYPT_COST: "10"
+    ports:
+      - "8083:8080"

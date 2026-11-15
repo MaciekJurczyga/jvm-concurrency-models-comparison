@@ -16,7 +16,7 @@ Java 25, Spring Boot 4.1.2. Load is generated with k6 in an open model. Metrics 
 |---|---|
 | `apps/fake-api` | slow dependency: `GET /delay?ms=N` |
 | `apps/mvc` | service under test, Spring MVC + Tomcat; profiles `platform` / `virtual` |
-| `apps/webflux` | service under test, Spring WebFlux + Netty (in progress) |
+| `apps/webflux` | service under test, Spring WebFlux + Netty |
 | `infra/` | Docker Compose, Prometheus, Grafana |
 | `load/` | k6 scenarios |
 | `runner/`, `analysis/` | Python orchestration and analysis |
@@ -32,10 +32,11 @@ Requires Docker (and JDK 25 for local builds only).
 docker compose -f infra/docker-compose.yml up -d --build --wait fake-api
 curl "http://localhost:8090/delay?ms=200"              # {"delayMs":200} after ~200 ms
 
-docker compose -f infra/docker-compose.yml up -d --build --wait mvc-platform mvc-virtual
+docker compose -f infra/docker-compose.yml up -d --build --wait mvc-platform mvc-virtual webflux
 curl http://localhost:8081/io                          # {"upstreamDelayMs":100}  (platform threads)
 curl http://localhost:8082/cpu                         # {"matches":true}         (virtual threads)
 curl http://localhost:8082/diag/thread                 # {"thread":"VirtualThread[...]","virtual":true}
+curl http://localhost:8083/io                          # {"upstreamDelayMs":100}  (WebFlux)
 ```
 
 SUT endpoints: `GET /io`, `GET /cpu`, `GET /diag/thread`, `GET /actuator/health`, `GET /actuator/prometheus`.

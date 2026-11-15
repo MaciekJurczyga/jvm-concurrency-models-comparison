@@ -24,5 +24,6 @@
     <modules>
         <module>apps/fake-api</module>
         <module>apps/mvc</module>
+        <module>apps/webflux</module>
     </modules>
 </project>

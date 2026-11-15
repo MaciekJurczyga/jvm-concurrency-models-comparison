@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: webflux
+  threads:
+    virtual:
+      enabled: false
+
+server:
+  port: 8080
+
+app:
+  upstream-url: ${UPSTREAM_URL:http://fake-api:8080}
+  io-delay-ms: ${IO_DELAY_MS:100}
+  upstream-timeout: ${UPSTREAM_TIMEOUT:5s}
+  bcrypt-cost: ${BCRYPT_COST:10}
+  # Far above Tomcat's max-connections (8192), so the client pool never caps concurrency
+  # below the MVC server's own limit (DECISIONS.md, D12).
+  upstream-max-connections: ${UPSTREAM_MAX_CONNECTIONS:10000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: webflux
+      model: reactive

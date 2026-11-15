@@ -71,7 +71,35 @@ k6 can then separate dependency timeouts from other dependency errors and from t
 Every metric carries the tags `application` and `model` (`platform` / `virtual`; `reactive` in WebFlux).
 In the virtual profile `tomcat_threads_busy_threads` and `tomcat_threads_config_max_threads` report `-1` (there is no thread pool). The model-independent measure of in-flight requests is `http_server_requests_active_seconds_count`, which WebFlux exposes as well; `tomcat_connections_current_connections` complements it for MVC.
 
-## Open
+## D12. WebFlux HTTP client to the fake API — accepted (2026-11-15)
 
-- bcrypt scheduler in WebFlux (plan section 9 item 2) — decide in E3.
+`WebClient` built directly over a Reactor Netty `HttpClient` with an explicit `ConnectionProvider` named `fake-api`:
+- `maxConnections = 10000` (`UPSTREAM_MAX_CONNECTIONS`), above Tomcat's `max-connections` (8192), so the client pool never caps concurrency below what the MVC server itself allows. The Reactor Netty default is `max(2 × CPUs, 16)`, i.e. 16 in a 4-CPU container, which would cap `/io` at roughly 160 req/s with a 100 ms dependency;
+- `pendingAcquireMaxCount = -1` (unbounded queue of requests waiting for a connection) and `pendingAcquireTimeout = UPSTREAM_TIMEOUT`;
+- HTTP/1.1, connect timeout and response timeout = `UPSTREAM_TIMEOUT`, as in MVC (D7).
+
+Timeouts (response, connect, pool acquire) map to 504 and other `WebClientException`s to 502, with the same bodies as MVC (D10).
+Sanity check (not a measurement): warm containers at 1500 req/s for 10 s on `/io` gave med ≈ 101 ms / p99 ≈ 114 ms (WebFlux) and med ≈ 102 ms / p99 ≈ 117 ms (MVC platform). A cold first run was about 3× slower in both, so warm-up before each run is essential (plan section 6).
+
+## D13. bcrypt in WebFlux on `Schedulers.parallel()` — accepted (2026-11-15)
+
+`Mono.fromCallable(() -> encoder.matches(...)).subscribeOn(Schedulers.parallel())`. Closes plan section 9 item 2.
+`parallel()` is Reactor's scheduler for CPU-bound work: one thread per CPU (4 in the SUT container) and an unbounded task queue. Under S2-CPU WebFlux therefore keeps accepting requests and queues hashing work, which is the behaviour H3 predicts for the reactive model.
+Rejected: `boundedElastic()` (10 × CPUs threads, queue capped at 100 000 tasks; meant for blocking calls and would behave more like a thread pool); running on the event loop (deliberately wrong variant, kept for the thesis, plan section 8).
+This choice directly shapes the S2-CPU result and must be described in the methodology.
+
+## D14. One event-loop group shared by server and client — accepted (2026-11-15)
+
+The server runs on the loop resources of Spring's `ReactorResourceFactory`. A `WebClient` built directly via `HttpClient.create(...)` would get Reactor Netty's separate global loop, so the SUT would run two event-loop groups (8 threads on 4 CPUs).
+The client therefore calls `runOn(reactorResourceFactory.getLoopResources())`, which is what Boot's auto-configured `WebClient` does. A test asserts there is exactly one event-loop group; it fails when `runOn` is removed (checked).
+Loop size is left at the Reactor Netty default `max(CPUs, 4)`, which is 4 in the container. Verified there: `nproc` = 4, 4 `reactor-http-epoll-*` threads (Linux uses the epoll transport; the Windows test JVM shows `webflux-http-nio-*`).
+The container also runs a few `boundedElastic-*` threads, used by actuator health checks, not by `/io` or `/cpu`.
+
+## D15. No blocking on event-loop threads: BlockHound plus a scheduler test — accepted (2026-11-15)
+
+BlockHound 1.0.18 (`blockhound-junit-platform`) is installed in all WebFlux tests. It works on Java 25 with `-XX:+AllowRedefinitionToAddDeleteMethods` (surefire `argLine`; the flag is deprecated, JVM warns). A dedicated test proves that BlockHound is active.
+BlockHound only detects blocking calls (sleep, socket I/O, locks), not CPU-heavy work, so a separate test checks that bcrypt emits on a `parallel-*` thread.
+The endpoint tests (`/io`, `/cpu`, errors, actuator) run under BlockHound with no violations.
+
+## Open
 - Absolute vs relative S2 rates (section 9 item 1) — decide in E7.
