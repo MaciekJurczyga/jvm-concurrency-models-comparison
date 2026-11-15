@@ -23,5 +23,6 @@
 
     <modules>
         <module>apps/fake-api</module>
+        <module>apps/mvc</module>
     </modules>
 </project>

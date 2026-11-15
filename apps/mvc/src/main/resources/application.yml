@@ -1,0 +1,61 @@
+spring:
+  application:
+    name: mvc
+  threads:
+    virtual:
+      enabled: false
+
+server:
+  port: 8080
+  # Tomcat defaults, pinned explicitly so the limits are visible and identical in both profiles.
+  # In the virtual profile threads.max is ignored, but max-connections still caps concurrency (DECISIONS.md, D9).
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+    accept-count: 100
+    max-connections: 8192
+    # Needed for tomcat.threads.busy / tomcat.connections metrics.
+    mbeanregistry:
+      enabled: true
+
+app:
+  upstream-url: ${UPSTREAM_URL:http://fake-api:8080}
+  io-delay-ms: ${IO_DELAY_MS:100}
+  upstream-timeout: ${UPSTREAM_TIMEOUT:5s}
+  bcrypt-cost: ${BCRYPT_COST:10}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  metrics:
+    tags:
+      application: mvc
+
+---
+spring:
+  config:
+    activate:
+      on-profile: platform
+  threads:
+    virtual:
+      enabled: false
+management:
+  metrics:
+    tags:
+      model: platform
+
+---
+spring:
+  config:
+    activate:
+      on-profile: virtual
+  threads:
+    virtual:
+      enabled: true
+management:
+  metrics:
+    tags:
+      model: virtual

@@ -1,5 +1,22 @@
 name: jcmc
 
+# Both MVC models share one image; only the Spring profile differs (DECISIONS.md, D2).
+# Provisional SUT limits (plan section 3); the full SUT selection comes with E4.
+# No restart policy: an automatic restart would distort time-to-recovery (DECISIONS.md, D6).
+x-mvc: &mvc
+  image: jcmc/mvc:dev
+  cpuset: "0-3"
+  mem_limit: 1g
+  depends_on:
+    fake-api:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+    interval: 2s
+    timeout: 2s
+    retries: 30
+    start_period: 5s
+
 services:
   fake-api:
     build:
@@ -18,3 +35,32 @@ services:
       timeout: 2s
       retries: 30
       start_period: 5s
+
+  mvc-platform:
+    <<: *mvc
+    # Only this service builds jcmc/mvc; two builds of one tag would race.
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: mvc
+    environment:
+      SPRING_PROFILES_ACTIVE: platform
+      UPSTREAM_URL: http://fake-api:8080
+      IO_DELAY_MS: "100"
+      UPSTREAM_TIMEOUT: 5s
+      BCRYPT_COST: "10"
+    ports:
+      - "8081:8080"
+
+  mvc-virtual:
+    <<: *mvc
+    pull_policy: never
+    environment:
+      SPRING_PROFILES_ACTIVE: virtual
+      UPSTREAM_URL: http://fake-api:8080
+      IO_DELAY_MS: "100"
+      UPSTREAM_TIMEOUT: 5s
+      BCRYPT_COST: "10"
+    ports:
+      - "8082:8080"
