@@ -1,20 +1,9 @@
 name: jcmc
 
-# Common SUT settings. Both MVC models share one image; only the Spring profile differs (DECISIONS.md, D2).
-# Provisional SUT limits (plan section 3); the full SUT selection comes with E4.
-# No restart policy: an automatic restart would distort time-to-recovery (DECISIONS.md, D6).
-x-sut: &sut
-  cpuset: "0-3"
-  mem_limit: 1g
-  depends_on:
-    fake-api:
-      condition: service_healthy
-  healthcheck:
-    test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
-    interval: 2s
-    timeout: 2s
-    retries: 30
-    start_period: 5s
+# Exactly one SUT, chosen by an env file: models/platform.env | models/virtual.env | models/reactive.env
+#   docker compose -f infra/docker-compose.yml --env-file infra/models/virtual.env up -d --build --wait
+# A single "sut" service (not one service per model) guarantees that switching the model recreates the container,
+# so two models can never run side by side behind the same name (DECISIONS.md, D16).
 
 services:
   fake-api:
@@ -35,49 +24,92 @@ services:
       retries: 30
       start_period: 5s
 
-  mvc-platform:
-    <<: *sut
-    image: jcmc/mvc:dev
-    # Only this service builds jcmc/mvc; two builds of one tag would race.
+  # MVC platform and virtual share one image; only the Spring profile differs (DECISIONS.md, D2).
+  # No restart policy: an automatic restart would distort time-to-recovery (DECISIONS.md, D6).
+  sut:
     build:
       context: ..
       dockerfile: Dockerfile
       args:
-        MODULE: mvc
+        MODULE: ${SUT_MODULE:?select a model with --env-file infra/models/<model>.env}
+    image: jcmc/${SUT_MODULE}:dev
+    cpuset: "0-3"
+    mem_limit: 1g
+    depends_on:
+      fake-api:
+        condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: platform
+      SPRING_PROFILES_ACTIVE: ${SUT_SPRING_PROFILE:-}
       UPSTREAM_URL: http://fake-api:8080
       IO_DELAY_MS: "100"
       UPSTREAM_TIMEOUT: 5s
       BCRYPT_COST: "10"
+      # Per-run JVM extras, e.g. -XX:+ExitOnOutOfMemoryError (DECISIONS.md, D6).
+      JAVA_OPTS: ${JAVA_OPTS:-}
     ports:
-      - "8081:8080"
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
 
-  mvc-virtual:
-    <<: *sut
-    image: jcmc/mvc:dev
-    pull_policy: never
-    environment:
-      SPRING_PROFILES_ACTIVE: virtual
-      UPSTREAM_URL: http://fake-api:8080
-      IO_DELAY_MS: "100"
-      UPSTREAM_TIMEOUT: 5s
-      BCRYPT_COST: "10"
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    cpuset: "10-11"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # k6 pushes its metrics here (experimental-prometheus-rw output).
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Safety net only: results/ is the source of truth, this allows re-exporting a run window later (DECISIONS.md, D16).
+      - prometheus-data:/prometheus
     ports:
-      - "8082:8080"
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
 
-  webflux:
-    <<: *sut
-    image: jcmc/webflux:dev
-    build:
-      context: ..
-      dockerfile: Dockerfile
-      args:
-        MODULE: webflux
+  grafana:
+    image: grafana/grafana:13.3.1
+    cpuset: "10-11"
+    depends_on:
+      prometheus:
+        condition: service_healthy
     environment:
-      UPSTREAM_URL: http://fake-api:8080
-      IO_DELAY_MS: "100"
-      UPSTREAM_TIMEOUT: 5s
-      BCRYPT_COST: "10"
+      # Local-only live view (bound to 127.0.0.1), so anonymous access without login.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "8083:8080"
+      - "127.0.0.1:3000:3000"
+
+  # One-shot load generator: docker compose -f infra/docker-compose.yml run --rm k6 run /load/scenarios/<script>.js
+  k6:
+    image: grafana/k6:2.4.0
+    profiles: [tools]
+    cpuset: "6-9"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      BASE_URL: http://sut:8080
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      # Full latency distributions instead of per-flush p(99) values, which cannot be aggregated over time (DECISIONS.md, D16).
+      K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM: "true"
+      K6_PROMETHEUS_RW_PUSH_INTERVAL: 1s
+    volumes:
+      - ../load:/load:ro
+      - ../results:/results
+
+volumes:
+  prometheus-data:

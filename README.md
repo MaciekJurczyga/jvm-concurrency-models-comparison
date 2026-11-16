@@ -25,19 +25,31 @@ Java 25, Spring Boot 4.1.2. Load is generated with k6 in an open model. Metrics 
 
 ## Quick start
 
-Requires Docker (and JDK 25 for local builds only).
+Requires Docker (and JDK 25 for local builds only). Commands run from the repo root.
 
 ```sh
 ./mvnw verify                                          # build + tests (Windows: mvnw.cmd)
-docker compose -f infra/docker-compose.yml up -d --build --wait fake-api
-curl "http://localhost:8090/delay?ms=200"              # {"delayMs":200} after ~200 ms
 
-docker compose -f infra/docker-compose.yml up -d --build --wait mvc-platform mvc-virtual webflux
-curl http://localhost:8081/io                          # {"upstreamDelayMs":100}  (platform threads)
-curl http://localhost:8082/cpu                         # {"matches":true}         (virtual threads)
-curl http://localhost:8082/diag/thread                 # {"thread":"VirtualThread[...]","virtual":true}
-curl http://localhost:8083/io                          # {"upstreamDelayMs":100}  (WebFlux)
+# Whole stack for one model: fake-api, Prometheus, Grafana and the SUT (model = platform | virtual | reactive)
+docker compose -f infra/docker-compose.yml --env-file infra/models/virtual.env up -d --build --wait
+curl http://localhost:8080/io                          # {"upstreamDelayMs":100}
+curl http://localhost:8080/cpu                         # {"matches":true}
+curl http://localhost:8080/diag/thread                 # {"thread":"VirtualThread[...]","virtual":true}
+curl "http://localhost:8090/delay?ms=200"              # fake API: {"delayMs":200} after ~200 ms
+
+# Switch the model: the same command with another env file recreates the single "sut" container
+docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env up -d --build --wait
+
+# Short k6 check with metrics pushed to Prometheus (ENDPOINT, RATE, DURATION overridable with -e)
+docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env   run --rm k6 run -o experimental-prometheus-rw --tag testid=dev-smoke /load/scenarios/smoke.js
+
+docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env down
 ```
 
+Every Compose command needs `--env-file infra/models/<model>.env` (without it Compose stops with an error; DECISIONS.md, D16).
+Live view: Prometheus <http://localhost:9090>, Grafana <http://localhost:3000> (Explore, no login).
+
 SUT endpoints: `GET /io`, `GET /cpu`, `GET /diag/thread`, `GET /actuator/health`, `GET /actuator/prometheus`.
-Environment: `UPSTREAM_URL`, `IO_DELAY_MS` (100), `UPSTREAM_TIMEOUT` (5s), `BCRYPT_COST` (10). See `docs/DECISIONS.md`.
+Environment: `UPSTREAM_URL`, `IO_DELAY_MS` (100), `UPSTREAM_TIMEOUT` (5s), `BCRYPT_COST` (10), `JAVA_OPTS` (empty). See `docs/DECISIONS.md`.
+
+Results layout and naming: [`results/README.md`](results/README.md).

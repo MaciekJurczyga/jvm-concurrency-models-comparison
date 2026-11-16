@@ -21,6 +21,8 @@ Every run additionally records exact versions in its own `meta.json`.
 | Docker Desktop | Engine 27.4.0, Compose v2.31.0 | WSL2 backend |
 | WSL | 3.0.5.0, kernel 6.18.58.1-microsoft-standard-WSL2 | |
 | k6 | 2.4.0 (`grafana/k6:2.4.0`) | run as a container, no host install |
+| Prometheus | `prom/prometheus:v3.16.0` | container; scrape every 1 s, remote-write receiver for k6 |
+| Grafana | `grafana/grafana:13.3.1` | container; datasource only, no dashboards |
 | Python | 3.13.5 | runner and analysis |
 
 ## WSL2 resources
@@ -36,7 +38,7 @@ memory=12GB
 Docker reports `NCPU=12`, `MemTotal≈11.7 GiB`. About 3.7 GB RAM remains for Windows.
 
 Container `cpuset` pins to WSL virtual CPUs, not physical cores (methodological limitation, see `METHODOLOGY.md`).
-Planned split (to be verified in the pilot, E7): SUT `0-3` + `mem_limit: 1g`, fake API `4-5`, k6 `6-9`, Prometheus/Grafana `10-11`.
+Split set in `infra/docker-compose.yml` (to be verified in the pilot, E7): SUT `0-3` + `mem_limit: 1g`, fake API `4-5`, k6 `6-9`, Prometheus/Grafana `10-11`.
 
 ## Measurement hygiene
 

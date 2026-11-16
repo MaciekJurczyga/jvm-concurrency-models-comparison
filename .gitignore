@@ -19,3 +19,6 @@ results/**/*.gz
 results/**/*.zip
 results/**/logs/
 results/**/k6_raw*.csv
+# Development series are never analysed (results/README.md)
+results/*_dev/
+results/*_dev-*/

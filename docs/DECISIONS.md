@@ -101,5 +101,26 @@ BlockHound 1.0.18 (`blockhound-junit-platform`) is installed in all WebFlux test
 BlockHound only detects blocking calls (sleep, socket I/O, locks), not CPU-heavy work, so a separate test checks that bcrypt emits on a `parallel-*` thread.
 The endpoint tests (`/io`, `/cpu`, errors, actuator) run under BlockHound with no violations.
 
+## D16. Measurement stack in Compose: one `sut` service, Prometheus, Grafana, k6 — accepted (2026-11-16)
+
+**SUT selection.** Compose has a single service `sut`, parametrised by an env file `infra/models/<model>.env` (`SUT_MODULE`, `SUT_SPRING_PROFILE`):
+`docker compose -f infra/docker-compose.yml --env-file infra/models/<platform|virtual|reactive>.env up -d --build --wait`.
+A first attempt with one service per model selected by Compose profiles was rejected: switching the profile does not stop the previous SUT, and two containers sharing the network alias `sut` would split traffic between two models by DNS round-robin, silently (observed in testing). With one service, changing the model recreates the container. Without an env file Compose stops with an error instead of guessing a model.
+The SUT is reachable as `sut:8080` inside the network and `localhost:8080` on the host; Prometheus and k6 never need to know which model runs, the Micrometer tag `model` identifies it (D11).
+
+**Prometheus** `prom/prometheus:v3.16.0`, `cpuset 10-11`: scrapes `sut` and `fake-api` every 1 s (resolution needed for S2 phase transitions) and receives k6 metrics through `--web.enable-remote-write-receiver`. The TSDB sits on the named volume `prometheus-data` with default retention (15 days). It is a safety net for re-exporting a run window; the source of truth is `results/` (D17).
+
+**k6** `grafana/k6:2.4.0`, `cpuset 6-9`, Compose profile `tools`, one-shot via `docker compose run --rm k6 run -o experimental-prometheus-rw ...`; mounts `load/` read-only and `results/`.
+Trend metrics are sent as **native histograms** (`K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true`, push every 1 s): `histogram_quantile` over any window then uses the full distribution, whereas the default per-flush `p(99)` gauges cannot be aggregated over time. Prometheus 3.16 ingests them without a feature flag.
+
+**Grafana** `grafana/grafana:13.3.1`, `cpuset 10-11`: only the Prometheus datasource is provisioned (live view, no dashboards; plan section 2). Anonymous admin access, ports bound to `127.0.0.1`.
+
+Verified (E4 DoD): for each model, `up` → 20 s k6 smoke at 20 req/s on `/io` → k6 and SUT both count 400–401 requests in Prometheus, k6 p99 from the native histogram ≈ 115–120 ms, exactly one SUT container running, `/diag/thread` matches the model.
+
+## D17. Results layout and naming — accepted (2026-11-16)
+
+Defined in `results/README.md` (binding). In short: `results/<YYYY-MM-DD>_<kind>[-<label>]/<NNN>_<test>_<model>_r<rep>/`, kind ∈ `dev | smoke | pilot | main | rerun`; `results/` is raw and write-once, derived data goes to `analysis/output/<series_id>/`; invalid runs are marked, never deleted; every k6 run carries `testid=<series_id>/<run_id>`.
+Grouping runs into series (one runner invocation, one seed) replaces the flat `results/<date>_<scenario>_<model>_r<n>/` sketched in the plan: seed, run order and config snapshot then belong to exactly one directory, and pilot data cannot mix with the main series. `dev` series are git-ignored.
+
 ## Open
 - Absolute vs relative S2 rates (section 9 item 1) — decide in E7.
