@@ -8,6 +8,7 @@ WORKDIR /src
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 COPY apps/ apps/
+RUN test -f apps/${MODULE}/pom.xml || { echo "Unknown MODULE '${MODULE}'. Select a model: docker compose --env-file infra/models/<platform|virtual|reactive>.env ..."; exit 1; }
 RUN --mount=type=cache,target=/root/.m2 \
     chmod +x mvnw && ./mvnw -B -q -pl apps/${MODULE} -am package -DskipTests
 

@@ -17,14 +17,15 @@ results/
 └── <series_id>/                           # e.g. 2026-11-28_main
     ├── series.json                        # seed, planned order, git commit, start/end, host notes
     ├── experiments.yaml                   # snapshot of runner/experiments.yaml used for this series
-    ├── invalid_runs.csv                   # run_id, reason (empty file if all runs are valid)
+    ├── invalid_runs.csv                   # run_id, reason (header only if all runs are valid)
     └── <run_id>/                          # e.g. 007_s2-cpu_virtual_r3
         ├── meta.json                      # versions, parameters, timestamps, validity, notes
         ├── k6_summary.json                # k6 end-of-test summary (measured scenario only)
         ├── k6_raw.csv.gz                  # k6 per-request data          (not in git)
         ├── warmup_summary.json            # k6 summary of the discarded warm-up
         ├── docker_stats.csv               # per-second CPU/memory of all containers
-        ├── prom/<query_name>.csv          # Prometheus query_range export for the run window
+        ├── prom/<query_name>.csv          # Prometheus query_range export (warm-up start .. scenario end + 5 s)
+        ├── prom/_queries.json             # the PromQL used, export window and per-query status
         └── logs/<service>.log             # container logs                (not in git)
 ```
 

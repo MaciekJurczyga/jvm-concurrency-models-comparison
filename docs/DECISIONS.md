@@ -105,7 +105,7 @@ The endpoint tests (`/io`, `/cpu`, errors, actuator) run under BlockHound with n
 
 **SUT selection.** Compose has a single service `sut`, parametrised by an env file `infra/models/<model>.env` (`SUT_MODULE`, `SUT_SPRING_PROFILE`):
 `docker compose -f infra/docker-compose.yml --env-file infra/models/<platform|virtual|reactive>.env up -d --build --wait`.
-A first attempt with one service per model selected by Compose profiles was rejected: switching the profile does not stop the previous SUT, and two containers sharing the network alias `sut` would split traffic between two models by DNS round-robin, silently (observed in testing). With one service, changing the model recreates the container. Without an env file Compose stops with an error instead of guessing a model.
+A first attempt with one service per model selected by Compose profiles was rejected: switching the profile does not stop the previous SUT, and two containers sharing the network alias `sut` would split traffic between two models by DNS round-robin, silently (observed in testing). With one service, changing the model recreates the container. Without an env file `SUT_MODULE` defaults to `none`: `down`, `ps` and `logs` work, while `up` fails in the image build with an explicit message (guard in the `Dockerfile`), so a model is never guessed.
 The SUT is reachable as `sut:8080` inside the network and `localhost:8080` on the host; Prometheus and k6 never need to know which model runs, the Micrometer tag `model` identifies it (D11).
 
 **Prometheus** `prom/prometheus:v3.16.0`, `cpuset 10-11`: scrapes `sut` and `fake-api` every 1 s (resolution needed for S2 phase transitions) and receives k6 metrics through `--web.enable-remote-write-receiver`. The TSDB sits on the named volume `prometheus-data` with default retention (15 days). It is a safety net for re-exporting a run window; the source of truth is `results/` (D17).
@@ -122,5 +122,32 @@ Verified (E4 DoD): for each model, `up` → 20 s k6 smoke at 20 req/s on `/io` �
 Defined in `results/README.md` (binding). In short: `results/<YYYY-MM-DD>_<kind>[-<label>]/<NNN>_<test>_<model>_r<rep>/`, kind ∈ `dev | smoke | pilot | main | rerun`; `results/` is raw and write-once, derived data goes to `analysis/output/<series_id>/`; invalid runs are marked, never deleted; every k6 run carries `testid=<series_id>/<run_id>`.
 Grouping runs into series (one runner invocation, one seed) replaces the flat `results/<date>_<scenario>_<model>_r<n>/` sketched in the plan: seed, run order and config snapshot then belong to exactly one directory, and pilot data cannot mix with the main series. `dev` series are git-ignored.
 
+## D18. Load scenarios and the runner — accepted (2026-11-16)
+
+**k6 scripts** (`load/`): one script per scenario, endpoint and rates from env, always an open model (plan section 5).
+- `s1_baseline.js`: `ramping-arrival-rate` in steps (0 s jump + hold `STEP_DURATION_S`), not ramps, so each request belongs to exactly one rate level; every request is tagged `stage` and `rate`.
+- `s2_flood.js`: three `constant-arrival-rate` scenarios (`before`, `flood`, `after`) chained by `startTime`; every request carries `phase`. The `after` phase gets the same VU budget as the flood by default, so it can keep its arrival rate while flood requests are still pending.
+- `warmup.js`: constant rate, used for the warm-up and for manual checks.
+- Common (`lib/common.js`): request timeout 10 s (timeout = error), `gracefulStop` 15 s (> timeout) so requests in flight at a phase boundary finish and stay in their phase, `discardResponseBodies` to save k6 CPU, `handleSummary` writes the summary JSON to the path given by the runner.
+
+**Runner** (`runner/run_matrix.py`, config `runner/experiments.yaml`). Per series: snapshot of the config, random interleaved order from a recorded seed, images built once (so code cannot change mid-series), fake-api and Prometheus started once. Per run:
+1. `up --force-recreate --no-deps` of `sut` (fresh JVM, plan section 6), wait for the healthcheck;
+2. warm-up: a **separate** k6 run on the same endpoint (`warmup_summary.json`, own `testid`), so warm-up data never mixes with the measured run;
+3. scenario: `k6_summary.json`, `k6_raw.csv.gz`, remote write tagged `testid=<series_id>/<run_id>`;
+4. `docker stats` of all containers streamed through the whole run; `query_range` export (step 1 s) of the queries in `experiments.yaml` from warm-up start to scenario end + 5 s; container logs; `meta.json`;
+5. validation, then `stop sut` and cool-down.
+
+**Validity.** A run is invalid when k6 dropped iterations (> 0), the p95 CPU of the k6 container exceeds 320 % (80 % of its 4 CPUs), a k6 process failed, the summary is missing, or the runner hit an error. Invalid runs keep their data and are listed in `invalid_runs.csv` (D17). A SUT that crashes or is OOM-killed is **not** invalid: it is a result for H3 and is recorded in `meta.json` (`sut_state_after`).
+
+**S2 rates are absolute** and shared by all models, separately for `/io` and `/cpu` (plan section 9 item 1, recommended variant accepted 2026-11-16); values come from the pilot (E7).
+
+**Recorded per run:** git commit and dirty files, image IDs, JDK version inside the SUT, all parameters, timestamps, Windows power plan and AC state (measurement hygiene), free-text `--note`. A `main` series refuses to start on a dirty git tree unless `--allow-dirty`.
+
+**Findings for the pilot (E7).**
+- k6 initialises VUs beyond `preAllocatedVUs` slowly (about 12 VU/s observed). When latency jumps in a flood, it drops iterations and the run becomes invalid (seen in a short S2-CPU test). `PRE_VUS` must cover the expected peak (`rate × worst latency`, bounded by the 10 s timeout).
+- E5 DoD run (`--only s1-io/platform --reps 1`, placeholder parameters, dev series, not a measurement): complete run directory; run correctly marked invalid because k6 dropped 3255 iterations. Drops occurred already at steps where the SUT was healthy (p99 ≈ 105–120 ms), i.e. VU initialisation lag with `PRE_VUS: 100`, plus at 2000 req/s where platform threads saturated (p99 rose to ≈ 350–745 ms, matching 200 threads / 0.1 s). Calibrate `PRE_VUS` close to the expected peak.
+- The per-request CSV has about 13 rows per request: 148 MB (gz) for one 20-minute S1-IO run, i.e. several GB for the full matrix. k6 CPU p95 was 106 % of 400 %, so it is affordable CPU-wise; decide in E7 whether to keep it (`k6.raw_csv`).
+- With the placeholder parameters the full matrix (60 runs) is estimated at about 15.7 h, well above the planned 8–10 h. Mostly S1-IO: 20 steps × 60 s = 20 min per run. Calibration must shorten S1 (narrower range or shorter steps).
+
 ## Open
-- Absolute vs relative S2 rates (section 9 item 1) — decide in E7.
+- S2 rate values, phase lengths, k6 VU budgets, OOM behaviour (D6) — calibrate in the pilot (E7).

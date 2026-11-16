@@ -40,16 +40,27 @@ curl "http://localhost:8090/delay?ms=200"              # fake API: {"delayMs":20
 # Switch the model: the same command with another env file recreates the single "sut" container
 docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env up -d --build --wait
 
-# Short k6 check with metrics pushed to Prometheus (ENDPOINT, RATE, DURATION overridable with -e)
-docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env   run --rm k6 run -o experimental-prometheus-rw --tag testid=dev-smoke /load/scenarios/smoke.js
+# Short manual k6 check with metrics pushed to Prometheus (Git Bash: prefix with MSYS_NO_PATHCONV=1)
+docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env   run --rm -e ENDPOINT=/io -e RATE=20 -e DURATION_S=30 k6 run -o experimental-prometheus-rw --tag testid=manual /load/scenarios/warmup.js
 
-docker compose -f infra/docker-compose.yml --env-file infra/models/reactive.env down
+docker compose -f infra/docker-compose.yml down       # down / ps / logs work without an env file
 ```
 
-Every Compose command needs `--env-file infra/models/<model>.env` (without it Compose stops with an error; DECISIONS.md, D16).
+`up` needs `--env-file infra/models/<model>.env` (`--env-file` and `-f` go **before** the subcommand); without it the SUT build stops with an explicit error (DECISIONS.md, D16).
 Live view: Prometheus <http://localhost:9090>, Grafana <http://localhost:3000> (Explore, no login).
 
 SUT endpoints: `GET /io`, `GET /cpu`, `GET /diag/thread`, `GET /actuator/health`, `GET /actuator/prometheus`.
 Environment: `UPSTREAM_URL`, `IO_DELAY_MS` (100), `UPSTREAM_TIMEOUT` (5s), `BCRYPT_COST` (10), `JAVA_OPTS` (empty). See `docs/DECISIONS.md`.
 
+## Measurement runs
+
+```sh
+pip install -r runner/requirements.txt
+python runner/run_matrix.py --dry-run                          # plan, order and estimated duration
+python runner/run_matrix.py --only s1-io/platform --reps 1     # one configuration (series kind "dev")
+python runner/run_matrix.py --kind pilot --reps 3 --seed 42    # all 12 configurations
+python runner/run_matrix.py --only s2-cpu/virtual --set tests.s2-cpu.params.FLOOD_RATE=300
+```
+
+Parameters: `runner/experiments.yaml`. Each run: fresh SUT → warm-up (discarded) → scenario (`load/scenarios/s1_baseline.js` or `s2_flood.js`) → artifacts → validation → cool-down (DECISIONS.md, D18).
 Results layout and naming: [`results/README.md`](results/README.md).

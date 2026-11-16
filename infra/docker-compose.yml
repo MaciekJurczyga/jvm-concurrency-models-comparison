@@ -4,6 +4,7 @@ name: jcmc
 #   docker compose -f infra/docker-compose.yml --env-file infra/models/virtual.env up -d --build --wait
 # A single "sut" service (not one service per model) guarantees that switching the model recreates the container,
 # so two models can never run side by side behind the same name (DECISIONS.md, D16).
+# Commands that do not start the SUT (down, ps, logs) work without an env file; "up" without one fails in the image build.
 
 services:
   fake-api:
@@ -31,8 +32,8 @@ services:
       context: ..
       dockerfile: Dockerfile
       args:
-        MODULE: ${SUT_MODULE:?select a model with --env-file infra/models/<model>.env}
-    image: jcmc/${SUT_MODULE}:dev
+        MODULE: ${SUT_MODULE:-none}
+    image: jcmc/${SUT_MODULE:-none}:dev
     cpuset: "0-3"
     mem_limit: 1g
     depends_on:

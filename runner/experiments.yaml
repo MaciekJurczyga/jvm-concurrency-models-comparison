@@ -1,0 +1,72 @@
+# Experiment matrix for runner/run_matrix.py. A copy is stored with every series (results/README.md).
+# All rates, VU budgets and phase lengths below are PLACEHOLDERS until the pilot (E7) calibrates them.
+# Override any value without editing this file: run_matrix.py --set tests.s1-io.params.MAX_RATE=500
+
+models: [platform, virtual, reactive]   # = infra/models/<model>.env
+reps: 5                                 # plan section 6
+cooldown_s: 60                          # pause between runs (laptop thermals, plan section 3)
+java_opts: ""                           # passed to the SUT as JAVA_OPTS; OOM behaviour is open (DECISIONS.md, D6)
+
+k6:
+  request_timeout: 10s                  # timed-out requests count as errors (plan section 5)
+  # Per-request CSV (~13 rows per request) is large and costs k6 CPU; check k6 headroom in the pilot (E7).
+  raw_csv: true
+
+validation:
+  max_dropped_iterations: 0
+  # docker stats CPU % is relative to one CPU; k6 has cpuset 6-9 (4 CPUs), so 320 % = 80 % of its CPUs (plan section 3).
+  k6_cpu_p95_max_pct: 320
+
+# Each test: k6 script, endpoint, warm-up (separate discarded k6 run on the same endpoint) and script env (params).
+# S2 rates are absolute and shared by all models, separately for /io and /cpu (plan section 9 item 1, DECISIONS.md, D18).
+tests:
+  s1-io:
+    script: s1_baseline.js
+    endpoint: /io
+    warmup: {rate: 200, duration_s: 60}
+    params: {START_RATE: 100, STEP_RATE: 100, MAX_RATE: 2000, STEP_DURATION_S: 60, PRE_VUS: 100, MAX_VUS: 5000}
+  s1-cpu:
+    script: s1_baseline.js
+    endpoint: /cpu
+    warmup: {rate: 20, duration_s: 60}
+    params: {START_RATE: 10, STEP_RATE: 10, MAX_RATE: 200, STEP_DURATION_S: 60, PRE_VUS: 50, MAX_VUS: 3000}
+  s2-io:
+    script: s2_flood.js
+    endpoint: /io
+    warmup: {rate: 200, duration_s: 60}
+    params: {NORMAL_RATE: 500, FLOOD_RATE: 4000, BEFORE_S: 60, FLOOD_S: 120, AFTER_S: 180, PRE_VUS: 200, MAX_VUS: 20000}
+  s2-cpu:
+    script: s2_flood.js
+    endpoint: /cpu
+    warmup: {rate: 20, duration_s: 60}
+    params: {NORMAL_RATE: 25, FLOOD_RATE: 200, BEFORE_S: 60, FLOOD_S: 120, AFTER_S: 180, PRE_VUS: 50, MAX_VUS: 3000}
+
+# Exported per run with query_range (step 1 s) into prom/<name>.csv. $testid is replaced by "<series_id>/<run_id>".
+prometheus:
+  step: 1s
+  queries:
+    # client side (k6)
+    k6_rps_by_status: sum by (status, phase, stage) (rate(k6_http_reqs_total{testid="$testid"}[5s]))
+    k6_failed_rate: avg by (phase, stage) (k6_http_req_failed_rate{testid="$testid"})
+    k6_p50: histogram_quantile(0.50, sum(rate(k6_http_req_duration_seconds{testid="$testid"}[5s])))
+    k6_p95: histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds{testid="$testid"}[5s])))
+    k6_p99: histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds{testid="$testid"}[5s])))
+    k6_vus: sum(k6_vus{testid="$testid"})
+    k6_dropped_iterations: sum(k6_dropped_iterations_total{testid="$testid"})
+    # server side (SUT)
+    sut_cpu: process_cpu_usage{job="sut"}
+    sut_heap_used_bytes: sum(jvm_memory_used_bytes{job="sut", area="heap"})
+    sut_nonheap_used_bytes: sum(jvm_memory_used_bytes{job="sut", area="nonheap"})
+    sut_gc_pause_rate: sum by (gc, cause) (rate(jvm_gc_pause_seconds_sum{job="sut"}[5s]))
+    sut_gc_pause_count_rate: sum by (gc, cause) (rate(jvm_gc_pause_seconds_count{job="sut"}[5s]))
+    sut_threads_live: jvm_threads_live_threads{job="sut"}
+    sut_threads_states: jvm_threads_states_threads{job="sut"}
+    sut_inflight_requests: sum(http_server_requests_active_seconds_count{job="sut"})
+    sut_rps_by_status: sum by (uri, status) (rate(http_server_requests_seconds_count{job="sut", uri=~"/io|/cpu"}[5s]))
+    sut_tomcat_busy_threads: tomcat_threads_busy_threads{job="sut"}
+    sut_tomcat_connections: tomcat_connections_current_connections{job="sut"}
+    sut_executor_queued: executor_queued_tasks{job="sut"}
+    sut_executor_active: executor_active_threads{job="sut"}
+    # dependency: must stay at its configured delay, otherwise it was the bottleneck (plan section 4)
+    fake_api_mean_latency: rate(http_server_requests_seconds_sum{job="fake-api", uri="/delay"}[5s]) / rate(http_server_requests_seconds_count{job="fake-api", uri="/delay"}[5s])
+    fake_api_cpu: process_cpu_usage{job="fake-api"}
