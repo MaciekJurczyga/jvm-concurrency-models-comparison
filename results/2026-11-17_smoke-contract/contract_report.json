@@ -1,0 +1,253 @@
+{
+  "date": "2026-11-17T19:56:58+00:00",
+  "git": {
+    "commit": "fccc0ff9980b84e00508e890566f8bb357cb6414",
+    "dirty": true,
+    "dirty_files": [
+      " M README.md",
+      " M apps/mvc/src/main/java/pl/agh/jcmc/mvc/UpstreamErrorHandler.java",
+      " M apps/mvc/src/test/java/pl/agh/jcmc/mvc/UpstreamFailureTest.java",
+      " M docs/DECISIONS.md",
+      " M load/lib/common.js",
+      " M load/scenarios/s2_flood.js",
+      " M load/scenarios/warmup.js",
+      " M results/README.md",
+      " M runner/experiments.yaml",
+      " M runner/run_matrix.py",
+      "?? results/2026-11-17_rerun-smoke1117-2/",
+      "?? results/2026-11-17_rerun-smoke1117/",
+      "?? results/2026-11-17_smoke-capacity-nocsv/",
+      "?? results/2026-11-17_smoke-capacity/",
+      "?? results/2026-11-17_smoke/",
+      "?? runner/contract_test.py",
+      "?? runner/smoke.yaml"
+    ]
+  },
+  "expected": {
+    "io": {
+      "status": 200,
+      "body": "{\"upstreamDelayMs\":100}"
+    },
+    "cpu": {
+      "status": 200,
+      "body": "{\"matches\":true}"
+    },
+    "io_upstream_down": {
+      "status": 502,
+      "body": "{\"error\":\"upstream_error\"}"
+    },
+    "io_upstream_timeout": {
+      "status": 504,
+      "body": "{\"error\":\"upstream_timeout\"}"
+    }
+  },
+  "overrides": {
+    "io_upstream_down": {
+      "UPSTREAM_URL": "http://fake-api:9"
+    },
+    "io_upstream_timeout": {
+      "IO_DELAY_MS": "3000",
+      "UPSTREAM_TIMEOUT": "1s"
+    }
+  },
+  "results": {
+    "platform": {
+      "io": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": "{\"upstreamDelayMs\":100}",
+        "body_bytes": 23,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      },
+      "cpu": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": "{\"matches\":true}",
+        "body_bytes": 16,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      },
+      "health": {
+        "status": 200,
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+        "body_bytes": 49,
+        "framing": "chunked",
+        "header_names": [
+          "content-type",
+          "date",
+          "transfer-encoding"
+        ]
+      },
+      "prometheus_has_model_tag": true,
+      "diag_thread": {
+        "thread": "Thread[#38,http-nio-8080-exec-4,5,main]",
+        "virtual": false
+      },
+      "io_upstream_down": {
+        "status": 502,
+        "content_type": "application/json",
+        "body": "{\"error\":\"upstream_error\"}",
+        "body_bytes": 26,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      },
+      "io_upstream_timeout": {
+        "status": 504,
+        "content_type": "application/json",
+        "body": "{\"error\":\"upstream_timeout\"}",
+        "body_bytes": 28,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      }
+    },
+    "virtual": {
+      "io": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": "{\"upstreamDelayMs\":100}",
+        "body_bytes": 23,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      },
+      "cpu": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": "{\"matches\":true}",
+        "body_bytes": 16,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      },
+      "health": {
+        "status": 200,
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+        "body_bytes": 49,
+        "framing": "chunked",
+        "header_names": [
+          "content-type",
+          "date",
+          "transfer-encoding"
+        ]
+      },
+      "prometheus_has_model_tag": true,
+      "diag_thread": {
+        "thread": "VirtualThread[#60,tomcat-handler-13]/runnable@ForkJoinPool-1-worker-1",
+        "virtual": true
+      },
+      "io_upstream_down": {
+        "status": 502,
+        "content_type": "application/json",
+        "body": "{\"error\":\"upstream_error\"}",
+        "body_bytes": 26,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      },
+      "io_upstream_timeout": {
+        "status": 504,
+        "content_type": "application/json",
+        "body": "{\"error\":\"upstream_timeout\"}",
+        "body_bytes": 28,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type",
+          "date"
+        ]
+      }
+    },
+    "reactive": {
+      "io": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": "{\"upstreamDelayMs\":100}",
+        "body_bytes": 23,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type"
+        ]
+      },
+      "cpu": {
+        "status": 200,
+        "content_type": "application/json",
+        "body": "{\"matches\":true}",
+        "body_bytes": 16,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type"
+        ]
+      },
+      "health": {
+        "status": 200,
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "body": "{\"groups\":[\"liveness\",\"readiness\"],\"status\":\"UP\"}",
+        "body_bytes": 49,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type"
+        ]
+      },
+      "prometheus_has_model_tag": true,
+      "diag_thread": {
+        "thread": "Thread[#33,reactor-http-epoll-2,5,main]",
+        "virtual": false
+      },
+      "io_upstream_down": {
+        "status": 502,
+        "content_type": "application/json",
+        "body": "{\"error\":\"upstream_error\"}",
+        "body_bytes": 26,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type"
+        ]
+      },
+      "io_upstream_timeout": {
+        "status": 504,
+        "content_type": "application/json",
+        "body": "{\"error\":\"upstream_timeout\"}",
+        "body_bytes": 28,
+        "framing": "content-length",
+        "header_names": [
+          "content-length",
+          "content-type"
+        ]
+      }
+    }
+  },
+  "passed": true,
+  "failures": []
+}

@@ -5,6 +5,7 @@ Layout and naming of the output: results/README.md (DECISIONS.md, D17). Procedur
   python runner/run_matrix.py --dry-run
   python runner/run_matrix.py --only s1-io/platform --reps 1
   python runner/run_matrix.py --kind pilot --reps 3 --seed 42
+  python runner/run_matrix.py --config runner/smoke.yaml --kind smoke
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import fnmatch
 import json
 import os
 import platform
@@ -38,6 +40,7 @@ SUT_CONTAINER = "jcmc-sut-1"
 FAKE_API_CONTAINER = "jcmc-fake-api-1"
 K6_CONTAINER = "jcmc-k6"
 KINDS = ("dev", "smoke", "pilot", "main", "rerun")
+NO_SUT = "none"
 # Time for the last Prometheus scrape and k6 remote-write flush (both every 1 s) to land before exporting.
 SETTLE_S = 5
 PER_RUN_OVERHEAD_S = 45
@@ -61,13 +64,31 @@ def sh(args: list[str], check: bool = True, encoding: str = "utf-8", **kw) -> su
 
 
 def compose(model: str) -> list[str]:
-    return ["docker", "compose", "-f", COMPOSE_FILE, "--env-file", f"infra/models/{model}.env"]
+    base = ["docker", "compose", "-f", COMPOSE_FILE]
+    # Model "none" (capacity checks without a SUT): no env file, so Compose cannot start or build a SUT.
+    return base if model == NO_SUT else base + ["--env-file", f"infra/models/{model}.env"]
 
 
 # ---------------------------------------------------------------- configuration
 
+def deep_merge(base: dict, over: dict) -> dict:
+    out = dict(base)
+    for k, v in over.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def config_files(path: Path) -> list[Path]:
+    """The config and every file it extends, base first (all are snapshotted with the series)."""
+    parent = yaml.safe_load(path.read_text(encoding="utf-8")).get("extends")
+    return (config_files(path.parent / parent) if parent else []) + [path]
+
+
 def load_config(path: Path, overrides: list[str]) -> dict:
-    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+    cfg: dict = {}
+    for f in config_files(path):
+        cfg = deep_merge(cfg, yaml.safe_load(f.read_text(encoding="utf-8")))
+    cfg.pop("extends", None)
     for item in overrides:
         key, sep, raw = item.partition("=")
         if not sep:
@@ -86,21 +107,33 @@ def load_config(path: Path, overrides: list[str]) -> dict:
 
 def test_duration_s(test: dict) -> int:
     p = test["params"]
+    if "DURATION_S" in p:
+        return int(p["DURATION_S"])
     if "STEP_DURATION_S" in p:
         steps = (p["MAX_RATE"] - p["START_RATE"]) // p["STEP_RATE"] + 1
         return int(steps * p["STEP_DURATION_S"])
     return int(p["BEFORE_S"] + p["FLOOD_S"] + p["AFTER_S"])
 
 
+def test_models(cfg: dict, test: str) -> list[str]:
+    # Capacity checks (smoke) target the fake API directly and declare models: [none], i.e. no SUT.
+    return cfg["tests"][test].get("models") or cfg["models"]
+
+
+def warmup_s(test: dict) -> int:
+    return test["warmup"]["duration_s"] if test.get("warmup") else 0
+
+
 def build_plan(cfg: dict, only: list[str], reps: int, seed: int) -> list[dict]:
-    configs = [(t, m) for t in cfg["tests"] for m in cfg["models"]]
+    configs = [(t, m) for t in cfg["tests"] for m in test_models(cfg, t)]
     if only:
-        wanted = []
+        wanted = set()
         for o in only:
             t, _, m = o.partition("/")
-            if t not in cfg["tests"] or m not in cfg["models"]:
-                sys.exit(f"--only {o}: expected <test>/<model>, tests={list(cfg['tests'])}, models={cfg['models']}")
-            wanted.append((t, m))
+            hits = {c for c in configs if fnmatch.fnmatchcase(c[0], t) and fnmatch.fnmatchcase(c[1], m or "*")}
+            if not hits:
+                sys.exit(f"--only {o}: no match, available: {[f'{a}/{b}' for a, b in configs]}")
+            wanted |= hits
         configs = [c for c in configs if c in wanted]
     order = [c for c in configs for _ in range(reps)]
     # Random, interleaved order with a recorded seed (plan section 6, Papadopoulos et al.).
@@ -234,12 +267,19 @@ class DockerStats:
         if self.thread:
             self.thread.join(timeout=10)
 
+    def _values(self, field: str, container: str, start: float, end: float) -> list[float]:
+        return sorted(float(r[field]) for r in self.rows
+                      if r["container"] == container and r[field] and start <= r["epoch"] <= end)
+
     def cpu_p95(self, container: str, start: float, end: float) -> float | None:
-        vals = sorted(float(r["cpu_pct"]) for r in self.rows
-                      if r["container"] == container and r["cpu_pct"] and start <= r["epoch"] <= end)
+        vals = self._values("cpu_pct", container, start, end)
         if not vals:
             return None
         return vals[min(len(vals) - 1, int(round(0.95 * (len(vals) - 1))))]
+
+    def mem_max(self, container: str, start: float, end: float) -> float | None:
+        vals = self._values("mem_used_bytes", container, start, end)
+        return vals[-1] if vals else None
 
 
 # ---------------------------------------------------------------- k6 and Prometheus
@@ -326,37 +366,47 @@ def execute_run(cfg: dict, series_id: str, series_dir: Path, item: dict, note: s
     testid = rel
     meta = {"series_id": series_id, "run_id": run_id, "test": test, "model": model, "rep": item["rep"],
             "index": item["index"], "config": f"{test}/{model}", "script": tcfg["script"],
-            "endpoint": tcfg["endpoint"], "params": tcfg["params"], "warmup": tcfg["warmup"],
+            "endpoint": tcfg["endpoint"], "base_url": tcfg.get("base_url"), "params": tcfg["params"],
+            "warmup": tcfg.get("warmup"), "expect": tcfg.get("expect"),
             "java_opts": cfg["java_opts"], "k6": cfg["k6"], "testid": testid, "git": git_state(),
             "host": host_power(), "notes": note, "timestamps": {}, "valid": None, "invalid_reasons": []}
     tstamps = meta["timestamps"]
     reasons = meta["invalid_reasons"]
     stats = DockerStats(run_dir / "docker_stats.csv")
     stats.start()
+    target = {"BASE_URL": tcfg["base_url"]} if tcfg.get("base_url") else {}
     try:
-        log(f"{run_id}: starting SUT ({model})")
-        tstamps["sut_start"] = ts(now_utc())
-        env_extra = {"JAVA_OPTS": cfg["java_opts"] or ""}
-        # Fresh SUT container for every run (plan section 6); dependencies keep running.
-        sh(compose(model) + ["up", "-d", "--no-deps", "--no-build", "--force-recreate", "--wait", "sut"],
-           env={**os.environ, **env_extra})
-        tstamps["sut_healthy"] = ts(now_utc())
-        meta["sut"] = {"image_id": image_id(f"jcmc/{'webflux' if model == 'reactive' else 'mvc'}:dev"),
-                       "java_version": sh(["docker", "exec", SUT_CONTAINER, "java", "-version"],
-                                          check=False).stderr.strip()}
+        if model == NO_SUT:
+            meta["sut"] = None
+        else:
+            log(f"{run_id}: starting SUT ({model})")
+            tstamps["sut_start"] = ts(now_utc())
+            env_extra = {"JAVA_OPTS": cfg["java_opts"] or ""}
+            # Fresh SUT container for every run (plan section 6); dependencies keep running.
+            sh(compose(model) + ["up", "-d", "--no-deps", "--no-build", "--force-recreate", "--wait", "sut"],
+               env={**os.environ, **env_extra})
+            tstamps["sut_healthy"] = ts(now_utc())
+            meta["sut"] = {"image_id": image_id(f"jcmc/{'webflux' if model == 'reactive' else 'mvc'}:dev"),
+                           "java_version": sh(["docker", "exec", SUT_CONTAINER, "java", "-version"],
+                                              check=False).stderr.strip()}
 
-        w = tcfg["warmup"]
-        log(f"{run_id}: warm-up {w['duration_s']} s @ {w['rate']}/s")
-        rc, ws, we = run_k6(cfg, model, "warmup.js",
-                            {"ENDPOINT": tcfg["endpoint"], "RATE": w["rate"], "DURATION_S": w["duration_s"]},
-                            f"{testid}/warmup", f"{rel}/warmup_summary.json", None, run_dir / "logs" / "k6_warmup.log")
-        tstamps["warmup_start"], tstamps["warmup_end"] = ts(ws), ts(we)
-        meta["warmup_exit_code"] = rc
-        if rc != 0:
-            reasons.append(f"warm-up k6 exit code {rc}")
+        ws = None
+        w = tcfg.get("warmup")
+        if w:
+            log(f"{run_id}: warm-up {w['duration_s']} s @ {w['rate']}/s")
+            rc, ws, we = run_k6(cfg, model, "warmup.js",
+                                {**target, "ENDPOINT": tcfg["endpoint"], "RATE": w["rate"],
+                                 "DURATION_S": w["duration_s"]},
+                                f"{testid}/warmup", f"{rel}/warmup_summary.json", None,
+                                run_dir / "logs" / "k6_warmup.log")
+            tstamps["warmup_start"], tstamps["warmup_end"] = ts(ws), ts(we)
+            meta["warmup_exit_code"] = rc
+            if rc != 0:
+                reasons.append(f"warm-up k6 exit code {rc}")
 
-        log(f"{run_id}: scenario {tcfg['script']} on {tcfg['endpoint']} (~{test_duration_s(tcfg)} s)")
-        env = {"ENDPOINT": tcfg["endpoint"], **tcfg["params"]}
+        log(f"{run_id}: scenario {tcfg['script']} on {tcfg.get('base_url', '')}{tcfg['endpoint']} "
+            f"(~{test_duration_s(tcfg)} s)")
+        env = {**target, "ENDPOINT": tcfg["endpoint"], **tcfg["params"]}
         raw = f"{rel}/k6_raw.csv.gz" if cfg["k6"]["raw_csv"] else None
         rc, rs, re_ = run_k6(cfg, model, tcfg["script"], env, testid, f"{rel}/k6_summary.json", raw,
                              run_dir / "logs" / "k6.log")
@@ -367,10 +417,10 @@ def execute_run(cfg: dict, series_id: str, series_dir: Path, item: dict, note: s
         time.sleep(SETTLE_S)
 
         # SUT failure (exit, OOM kill) is a result for H3, not an invalid run.
-        meta["sut_state_after"] = container_state(SUT_CONTAINER)
+        meta["sut_state_after"] = container_state(SUT_CONTAINER) if model != NO_SUT else None
         log(f"{run_id}: exporting Prometheus window")
-        meta["prometheus_export"] = export_prometheus(cfg, testid, ws.timestamp(), re_.timestamp() + SETTLE_S,
-                                                      run_dir / "prom")
+        meta["prometheus_export"] = export_prometheus(cfg, testid, (ws or rs).timestamp(),
+                                                      re_.timestamp() + SETTLE_S, run_dir / "prom")
         meta["k6_result"] = summarize_k6(run_dir / "k6_summary.json")
 
         v = cfg["validation"]
@@ -385,6 +435,16 @@ def execute_run(cfg: dict, series_id: str, series_dir: Path, item: dict, note: s
             reasons.append("no docker stats samples for the k6 container")
         elif k6_cpu > v["k6_cpu_p95_max_pct"]:
             reasons.append(f"k6 CPU p95 {k6_cpu:.0f}% > {v['k6_cpu_p95_max_pct']}%")
+        meta["k6_mem_max_bytes"] = stats.mem_max(K6_CONTAINER, rs.timestamp(), re_.timestamp())
+        meta["fake_api_cpu_p95_pct"] = stats.cpu_p95(FAKE_API_CONTAINER, rs.timestamp(), re_.timestamp())
+        # Optional per-test expectations, used by the smoke capacity checks (fake API must hold its delay).
+        exp = tcfg.get("expect") or {}
+        r = meta["k6_result"]
+        if "p99_max_ms" in exp and (r.get("p99_ms") is None or r["p99_ms"] > exp["p99_max_ms"]):
+            reasons.append(f"p99 {r.get('p99_ms')} ms > expected {exp['p99_max_ms']} ms")
+        if "failed_rate_max" in exp and (r.get("http_req_failed_rate") is None
+                                         or r["http_req_failed_rate"] > exp["failed_rate_max"]):
+            reasons.append(f"failed rate {r.get('http_req_failed_rate')} > expected {exp['failed_rate_max']}")
     except KeyboardInterrupt:
         reasons.append("aborted by user")
         raise
@@ -393,12 +453,16 @@ def execute_run(cfg: dict, series_id: str, series_dir: Path, item: dict, note: s
         log(f"{run_id}: runner error: {e!r}")
     finally:
         stats.stop()
-        for name, cont, since in [("sut", SUT_CONTAINER, None),
-                                  ("fake-api", FAKE_API_CONTAINER, tstamps.get("sut_start", {}).get("iso"))]:
+        first = tstamps.get("sut_start") or tstamps.get("warmup_start") or tstamps.get("run_start") or {}
+        logs = [("fake-api", FAKE_API_CONTAINER, first.get("iso"))]
+        if model != NO_SUT:
+            logs.insert(0, ("sut", SUT_CONTAINER, None))
+        for name, cont, since in logs:
             args = ["docker", "logs", "--timestamps"] + (["--since", since] if since else []) + [cont]
             r = sh(args, check=False)
             (run_dir / "logs" / f"{name}.log").write_text(r.stdout + r.stderr, encoding="utf-8")
-        sh(compose(model) + ["stop", "sut"], check=False)
+        if model != NO_SUT:
+            sh(compose(model) + ["stop", "sut"], check=False)
         sh(["docker", "rm", "-f", K6_CONTAINER], check=False)
         meta["valid"] = not reasons
         tstamps["collected"] = ts(now_utc())
@@ -412,7 +476,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=REPO / "runner" / "experiments.yaml")
     ap.add_argument("--only", action="append", default=[], metavar="TEST/MODEL",
-                    help="restrict to a configuration, e.g. s2-cpu/virtual (repeatable)")
+                    help="restrict to configurations: s2-cpu/virtual, s1-io (all models), 'cap-*' (glob, repeatable)")
     ap.add_argument("--reps", type=int, help="repetitions per configuration (default: reps from config)")
     ap.add_argument("--seed", type=int, help="seed for the run order (default: random, recorded)")
     ap.add_argument("--kind", choices=KINDS, default="dev", help="series kind, see results/README.md")
@@ -433,7 +497,7 @@ def main() -> None:
     if not plan:
         sys.exit("empty plan")
     models = sorted({p["model"] for p in plan})
-    est = sum(test_duration_s(cfg["tests"][p["test"]]) + cfg["tests"][p["test"]]["warmup"]["duration_s"]
+    est = sum(test_duration_s(cfg["tests"][p["test"]]) + warmup_s(cfg["tests"][p["test"]])
               + PER_RUN_OVERHEAD_S for p in plan) + cfg["cooldown_s"] * (len(plan) - 1)
 
     if a.dry_run:
@@ -441,7 +505,7 @@ def main() -> None:
               f"seed={seed}  runs={len(plan)}  estimated {est / 3600:.1f} h")
         for p in plan:
             t = cfg["tests"][p["test"]]
-            print(f"  {p['run_id']:<28} {t['script']:<16} {t['endpoint']:<5} ~{test_duration_s(t)} s  {t['params']}")
+            print(f"  {p['run_id']:<34} {t['script']:<16} {t['endpoint']:<5} ~{test_duration_s(t)} s  {t['params']}")
         if a.overrides:
             print(f"overrides: {a.overrides}")
         return
@@ -452,16 +516,20 @@ def main() -> None:
     series_id = series_id_for(a.kind, a.label)
     series_dir = RESULTS / series_id
     series_dir.mkdir(parents=True)
-    shutil.copy(a.config, series_dir / "experiments.yaml")
+    # The base config is stored as experiments.yaml, an extending config (e.g. smoke.yaml) under its own name.
+    for i, f in enumerate(config_files(a.config)):
+        shutil.copy(f, series_dir / ("experiments.yaml" if i == 0 else f.name))
     with (series_dir / "invalid_runs.csv").open("w", newline="", encoding="utf-8") as f:
         csv.writer(f).writerow(["run_id", "reason"])
     log(f"series {series_id}: {len(plan)} runs, seed {seed}, estimated {est / 3600:.1f} h")
 
     log(f"building images for {models}")
+    sh(compose(NO_SUT) + ["build", "fake-api"])
     for m in models:
-        sh(compose(m) + ["build", "sut", "fake-api"])
+        if m != NO_SUT:
+            sh(compose(m) + ["build", "sut"])
     log("starting fake-api and Prometheus")
-    sh(compose(models[0]) + ["up", "-d", "--wait", "fake-api", "prometheus"])
+    sh(compose(NO_SUT) + ["up", "-d", "--wait", "fake-api", "prometheus"])
 
     series = {"series_id": series_id, "kind": a.kind, "label": a.label, "seed": seed, "reps": reps,
               "only": a.only, "overrides": a.overrides, "effective_config": cfg, "notes": a.note,
@@ -498,7 +566,7 @@ def main() -> None:
     finally:
         series["finished"] = ts(now_utc())
         save_series()
-        sh(compose(models[0]) + ["down"], check=False)
+        sh(compose(NO_SUT) + ["down"], check=False)
     invalid = [r["run_id"] for r in series["runs"] if not r["valid"]]
     log(f"series {series_id} {series['status']}: {len(series['runs'])} runs, {len(invalid)} invalid {invalid or ''}")
 

@@ -2,8 +2,8 @@ package pl.agh.jcmc.mvc;
 
 import java.net.http.HttpTimeoutException;
 
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientException;
@@ -15,12 +15,16 @@ class UpstreamErrorHandler {
     record ErrorResponse(String error) {
     }
 
+    // Status set on the servlet response instead of returning ResponseEntity: the ResponseEntity path flushes
+    // before Tomcat knows the length, so errors went out chunked while WebFlux sends Content-Length (DECISIONS.md, D19).
     @ExceptionHandler(RestClientException.class)
-    ResponseEntity<ErrorResponse> upstreamFailure(RestClientException ex) {
+    ErrorResponse upstreamFailure(RestClientException ex, HttpServletResponse response) {
         if (isTimeout(ex)) {
-            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(new ErrorResponse("upstream_timeout"));
+            response.setStatus(HttpStatus.GATEWAY_TIMEOUT.value());
+            return new ErrorResponse("upstream_timeout");
         }
-        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ErrorResponse("upstream_error"));
+        response.setStatus(HttpStatus.BAD_GATEWAY.value());
+        return new ErrorResponse("upstream_error");
     }
 
     private static boolean isTimeout(Throwable ex) {

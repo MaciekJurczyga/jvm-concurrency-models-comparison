@@ -1,5 +1,6 @@
 // S2: HTTP flood in phases: normal -> flood -> normal; time to failure and time to recovery (plan section 5, Huang et al.).
-// Env: ENDPOINT, NORMAL_RATE, FLOOD_RATE, BEFORE_S, FLOOD_S, AFTER_S, PRE_VUS, MAX_VUS (flood phase), NORMAL_MAX_VUS.
+// Env: ENDPOINT, NORMAL_RATE, FLOOD_RATE, BEFORE_S, FLOOD_S, AFTER_S, PRE_VUS, MAX_VUS (flood phase),
+// NORMAL_PRE_VUS, NORMAL_MAX_VUS (before/after phases).
 import { commonOptions, GRACEFUL_STOP, hit, num } from '../lib/common.js';
 
 export { handleSummary } from '../lib/common.js';
@@ -14,16 +15,19 @@ const MAX_VUS = num('MAX_VUS');
 // The "after" phase must keep its arrival rate even while flood requests are still timing out,
 // so it gets the same VU budget as the flood by default.
 const NORMAL_MAX_VUS = num('NORMAL_MAX_VUS', MAX_VUS);
+// Each phase has its own VU pool and k6 preallocates all of them up front (~240 KB per VU measured in E6),
+// so the normal phases get their own, usually smaller, preallocation instead of the flood's.
+const NORMAL_PRE_VUS = num('NORMAL_PRE_VUS', PRE_VUS);
 
 // Open model in every phase (plan section 5); one scenario per phase so each request carries its phase tag.
-function phase(name, rate, startS, durationS, maxVUs) {
+function phase(name, rate, startS, durationS, preVUs, maxVUs) {
   return {
     executor: 'constant-arrival-rate',
     rate,
     timeUnit: '1s',
     startTime: `${startS}s`,
     duration: `${durationS}s`,
-    preAllocatedVUs: Math.min(PRE_VUS, maxVUs),
+    preAllocatedVUs: Math.min(preVUs, maxVUs),
     maxVUs,
     gracefulStop: GRACEFUL_STOP,
     tags: { test: 's2', phase: name },
@@ -33,9 +37,9 @@ function phase(name, rate, startS, durationS, maxVUs) {
 export const options = {
   ...commonOptions,
   scenarios: {
-    before: phase('before', NORMAL_RATE, 0, BEFORE_S, NORMAL_MAX_VUS),
-    flood: phase('flood', FLOOD_RATE, BEFORE_S, FLOOD_S, MAX_VUS),
-    after: phase('after', NORMAL_RATE, BEFORE_S + FLOOD_S, AFTER_S, NORMAL_MAX_VUS),
+    before: phase('before', NORMAL_RATE, 0, BEFORE_S, NORMAL_PRE_VUS, NORMAL_MAX_VUS),
+    flood: phase('flood', FLOOD_RATE, BEFORE_S, FLOOD_S, PRE_VUS, MAX_VUS),
+    after: phase('after', NORMAL_RATE, BEFORE_S + FLOOD_S, AFTER_S, NORMAL_PRE_VUS, NORMAL_MAX_VUS),
   },
 };
 

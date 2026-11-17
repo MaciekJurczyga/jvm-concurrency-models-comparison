@@ -17,6 +17,7 @@ results/
 └── <series_id>/                           # e.g. 2026-11-28_main
     ├── series.json                        # seed, planned order, git commit, start/end, host notes
     ├── experiments.yaml                   # snapshot of runner/experiments.yaml used for this series
+    ├── smoke.yaml                         # snapshot of an extending config, if one was used (e.g. runner/smoke.yaml)
     ├── invalid_runs.csv                   # run_id, reason (header only if all runs are valid)
     └── <run_id>/                          # e.g. 007_s2-cpu_virtual_r3
         ├── meta.json                      # versions, parameters, timestamps, validity, notes
@@ -36,7 +37,7 @@ results/
 | kind | Purpose | In git |
 |---|---|---|
 | `dev` | ad hoc runs while developing the runner/scenarios; never analysed | no (whole directory ignored) |
-| `smoke` | short correctness runs (E6) | yes |
+| `smoke` | short correctness runs and capacity checks (E6) | yes |
 | `pilot` | calibration runs (E7) | yes |
 | `main` | the measurement series reported in the article (E8) | yes |
 | `rerun` | repeats of invalid runs from a `main` series; `label` names it, e.g. `2026-11-30_rerun-main1128` | yes |
@@ -49,10 +50,16 @@ results/
 |---|---|---|
 | `NNN` | `001`, `002`, … | execution order within the series (randomised, plan section 6); sorting by name = chronological order |
 | `test` | `s1-io`, `s1-cpu`, `s2-io`, `s2-cpu` | scenario × endpoint (plan section 5) |
+| | `cap-*` (smoke only) | capacity check of k6 / the fake API without a SUT, defined in `runner/smoke.yaml` (D19) |
 | `model` | `platform`, `virtual`, `reactive` | concurrency model = env file `infra/models/<model>.env` |
+| | `none` | no SUT running (capacity checks only) |
 | `rep` | `r1` … `r5` | repetition of this test/model within the series |
 
 The configuration of a run is `<test>/<model>` (e.g. `s2-cpu/virtual`), the same notation as `run_matrix.py --only`.
+
+## Contract test
+
+`runner/contract_test.py` (E6, D19) writes `results/<YYYY-MM-DD>_smoke-contract/contract_report.json`: one file, no run directories, same write-once rule.
 
 ## Link to Prometheus
 

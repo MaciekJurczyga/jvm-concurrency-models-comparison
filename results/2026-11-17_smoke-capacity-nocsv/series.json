@@ -1,0 +1,342 @@
+{
+  "series_id": "2026-11-17_smoke-capacity-nocsv",
+  "kind": "smoke",
+  "label": "capacity-nocsv",
+  "seed": 6,
+  "reps": 1,
+  "only": [
+    "cap-*"
+  ],
+  "overrides": [
+    "k6.raw_csv=false"
+  ],
+  "effective_config": {
+    "models": [
+      "platform",
+      "virtual",
+      "reactive"
+    ],
+    "reps": 1,
+    "cooldown_s": 10,
+    "java_opts": "",
+    "k6": {
+      "request_timeout": "10s",
+      "raw_csv": false
+    },
+    "validation": {
+      "max_dropped_iterations": 0,
+      "k6_cpu_p95_max_pct": 320
+    },
+    "tests": {
+      "s1-io": {
+        "script": "s1_baseline.js",
+        "endpoint": "/io",
+        "warmup": {
+          "rate": 200,
+          "duration_s": 60
+        },
+        "params": {
+          "START_RATE": 100,
+          "STEP_RATE": 100,
+          "MAX_RATE": 2000,
+          "STEP_DURATION_S": 60,
+          "PRE_VUS": 100,
+          "MAX_VUS": 5000
+        }
+      },
+      "s1-cpu": {
+        "script": "s1_baseline.js",
+        "endpoint": "/cpu",
+        "warmup": {
+          "rate": 20,
+          "duration_s": 60
+        },
+        "params": {
+          "START_RATE": 10,
+          "STEP_RATE": 10,
+          "MAX_RATE": 200,
+          "STEP_DURATION_S": 60,
+          "PRE_VUS": 50,
+          "MAX_VUS": 3000
+        }
+      },
+      "s2-io": {
+        "script": "s2_flood.js",
+        "endpoint": "/io",
+        "warmup": {
+          "rate": 200,
+          "duration_s": 60
+        },
+        "params": {
+          "NORMAL_RATE": 500,
+          "FLOOD_RATE": 4000,
+          "BEFORE_S": 60,
+          "FLOOD_S": 120,
+          "AFTER_S": 180,
+          "PRE_VUS": 200,
+          "MAX_VUS": 20000
+        }
+      },
+      "s2-cpu": {
+        "script": "s2_flood.js",
+        "endpoint": "/cpu",
+        "warmup": {
+          "rate": 20,
+          "duration_s": 60
+        },
+        "params": {
+          "NORMAL_RATE": 25,
+          "FLOOD_RATE": 200,
+          "BEFORE_S": 60,
+          "FLOOD_S": 120,
+          "AFTER_S": 180,
+          "PRE_VUS": 50,
+          "MAX_VUS": 3000
+        }
+      },
+      "cap-fakeapi-r6000": {
+        "models": [
+          "none"
+        ],
+        "script": "warmup.js",
+        "base_url": "http://fake-api:8080",
+        "endpoint": "/delay?ms=100",
+        "warmup": {
+          "rate": 2000,
+          "duration_s": 15
+        },
+        "params": {
+          "RATE": 6000,
+          "DURATION_S": 30,
+          "PRE_VUS": 1500,
+          "MAX_VUS": 6000
+        },
+        "expect": {
+          "p99_max_ms": 120,
+          "failed_rate_max": 0
+        }
+      },
+      "cap-fakeapi-r8000": {
+        "models": [
+          "none"
+        ],
+        "script": "warmup.js",
+        "base_url": "http://fake-api:8080",
+        "endpoint": "/delay?ms=100",
+        "warmup": {
+          "rate": 2000,
+          "duration_s": 15
+        },
+        "params": {
+          "RATE": 8000,
+          "DURATION_S": 30,
+          "PRE_VUS": 2000,
+          "MAX_VUS": 8000
+        },
+        "expect": {
+          "p99_max_ms": 120,
+          "failed_rate_max": 0
+        }
+      },
+      "cap-fakeapi-r10000": {
+        "models": [
+          "none"
+        ],
+        "script": "warmup.js",
+        "base_url": "http://fake-api:8080",
+        "endpoint": "/delay?ms=100",
+        "warmup": {
+          "rate": 2000,
+          "duration_s": 15
+        },
+        "params": {
+          "RATE": 10000,
+          "DURATION_S": 30,
+          "PRE_VUS": 2500,
+          "MAX_VUS": 10000
+        },
+        "expect": {
+          "p99_max_ms": 120,
+          "failed_rate_max": 0
+        }
+      },
+      "cap-k6-vus18000": {
+        "models": [
+          "none"
+        ],
+        "script": "warmup.js",
+        "base_url": "http://fake-api:8080",
+        "endpoint": "/delay?ms=9000",
+        "warmup": null,
+        "params": {
+          "RATE": 2000,
+          "DURATION_S": 30,
+          "PRE_VUS": 20000,
+          "MAX_VUS": 20000
+        },
+        "expect": {
+          "p99_max_ms": 9200,
+          "failed_rate_max": 0
+        }
+      }
+    },
+    "prometheus": {
+      "step": "1s",
+      "queries": {
+        "k6_rps_by_status": "sum by (status, phase, stage) (rate(k6_http_reqs_total{testid=\"$testid\"}[5s]))",
+        "k6_failed_rate": "avg by (phase, stage) (k6_http_req_failed_rate{testid=\"$testid\"})",
+        "k6_p50": "histogram_quantile(0.50, sum(rate(k6_http_req_duration_seconds{testid=\"$testid\"}[5s])))",
+        "k6_p95": "histogram_quantile(0.95, sum(rate(k6_http_req_duration_seconds{testid=\"$testid\"}[5s])))",
+        "k6_p99": "histogram_quantile(0.99, sum(rate(k6_http_req_duration_seconds{testid=\"$testid\"}[5s])))",
+        "k6_vus": "sum(k6_vus{testid=\"$testid\"})",
+        "k6_dropped_iterations": "sum(k6_dropped_iterations_total{testid=\"$testid\"})",
+        "sut_cpu": "process_cpu_usage{job=\"sut\"}",
+        "sut_heap_used_bytes": "sum(jvm_memory_used_bytes{job=\"sut\", area=\"heap\"})",
+        "sut_nonheap_used_bytes": "sum(jvm_memory_used_bytes{job=\"sut\", area=\"nonheap\"})",
+        "sut_gc_pause_rate": "sum by (gc, cause) (rate(jvm_gc_pause_seconds_sum{job=\"sut\"}[5s]))",
+        "sut_gc_pause_count_rate": "sum by (gc, cause) (rate(jvm_gc_pause_seconds_count{job=\"sut\"}[5s]))",
+        "sut_threads_live": "jvm_threads_live_threads{job=\"sut\"}",
+        "sut_threads_states": "jvm_threads_states_threads{job=\"sut\"}",
+        "sut_inflight_requests": "sum(http_server_requests_active_seconds_count{job=\"sut\"})",
+        "sut_rps_by_status": "sum by (uri, status) (rate(http_server_requests_seconds_count{job=\"sut\", uri=~\"/io|/cpu\"}[5s]))",
+        "sut_tomcat_busy_threads": "tomcat_threads_busy_threads{job=\"sut\"}",
+        "sut_tomcat_connections": "tomcat_connections_current_connections{job=\"sut\"}",
+        "sut_executor_queued": "executor_queued_tasks{job=\"sut\"}",
+        "sut_executor_active": "executor_active_threads{job=\"sut\"}",
+        "fake_api_mean_latency": "rate(http_server_requests_seconds_sum{job=\"fake-api\", uri=\"/delay\"}[5s]) / rate(http_server_requests_seconds_count{job=\"fake-api\", uri=\"/delay\"}[5s])",
+        "fake_api_max_latency": "max(http_server_requests_seconds_max{job=\"fake-api\", uri=\"/delay\"})",
+        "fake_api_cpu": "process_cpu_usage{job=\"fake-api\"}"
+      }
+    }
+  },
+  "notes": "E6 capacity check without k6 raw CSV output (compare with 2026-11-17_smoke-capacity)",
+  "argv": [
+    "--config",
+    "runner/smoke.yaml",
+    "--kind",
+    "smoke",
+    "--label",
+    "capacity-nocsv",
+    "--only",
+    "cap-*",
+    "--seed",
+    "6",
+    "--set",
+    "k6.raw_csv=false",
+    "--note",
+    "E6 capacity check without k6 raw CSV output (compare with 2026-11-17_smoke-capacity)"
+  ],
+  "git": {
+    "commit": "fccc0ff9980b84e00508e890566f8bb357cb6414",
+    "dirty": true,
+    "dirty_files": [
+      " M apps/mvc/src/main/java/pl/agh/jcmc/mvc/UpstreamErrorHandler.java",
+      " M apps/mvc/src/test/java/pl/agh/jcmc/mvc/UpstreamFailureTest.java",
+      " M load/lib/common.js",
+      " M load/scenarios/warmup.js",
+      " M runner/experiments.yaml",
+      " M runner/run_matrix.py",
+      "?? results/2026-11-17_smoke-capacity/",
+      "?? runner/contract_test.py",
+      "?? runner/smoke.yaml"
+    ]
+  },
+  "started": {
+    "iso": "2026-11-17T19:30:26.577+00:00",
+    "epoch": 1794943826.577
+  },
+  "status": "finished",
+  "estimated_s": 375,
+  "versions": {
+    "spring_boot": "4.1.2",
+    "docker_server": "27.4.0",
+    "docker_compose": "2.31.0-desktop.2",
+    "k6": "k6 v2.4.0 (commit/dd9395906d, go1.27.3, linux/amd64)",
+    "python": "3.13.5",
+    "images": {
+      "jcmc/mvc:dev": "sha256:02ebc61e3c491c508355c0199e6ebebe385a525cb3d041b767b9932c7435ed95",
+      "jcmc/webflux:dev": "sha256:b823965a8719596c4bb29026ab90ff90f40ee976d5cea4a9773bf2e5b00cd537",
+      "jcmc/fake-api:dev": "sha256:776220e9551bde9946c1ccc348563cd4de895031c63a3f87761b7efd881e83e0",
+      "grafana/k6:2.4.0": "sha256:d41bb79cd8de5a7ad619b53570e3712633e8bff0937010a5c6c57a4747e7a276",
+      "prom/prometheus:v3.16.0": "sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06"
+    },
+    "host": {
+      "system": "Windows-11-10.0.26200-SP0",
+      "machine": "AMD64",
+      "processor": "Intel64 Family 6 Model 141 Stepping 1, GenuineIntel"
+    }
+  },
+  "host": {
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Zr├│wnowa┼╝ony)",
+    "on_ac_power": true
+  },
+  "plan": [
+    {
+      "index": 1,
+      "test": "cap-k6-vus18000",
+      "model": "none",
+      "rep": 1,
+      "run_id": "001_cap-k6-vus18000_none_r1"
+    },
+    {
+      "index": 2,
+      "test": "cap-fakeapi-r10000",
+      "model": "none",
+      "rep": 1,
+      "run_id": "002_cap-fakeapi-r10000_none_r1"
+    },
+    {
+      "index": 3,
+      "test": "cap-fakeapi-r8000",
+      "model": "none",
+      "rep": 1,
+      "run_id": "003_cap-fakeapi-r8000_none_r1"
+    },
+    {
+      "index": 4,
+      "test": "cap-fakeapi-r6000",
+      "model": "none",
+      "rep": 1,
+      "run_id": "004_cap-fakeapi-r6000_none_r1"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "001_cap-k6-vus18000_none_r1",
+      "valid": false,
+      "invalid_reasons": [
+        "k6 dropped 13802 iterations (max 0)",
+        "k6 CPU p95 394% > 320%",
+        "p99 11682.18768696 ms > expected 9200 ms",
+        "failed rate 0.6167154825965534 > expected 0"
+      ]
+    },
+    {
+      "run_id": "002_cap-fakeapi-r10000_none_r1",
+      "valid": false,
+      "invalid_reasons": [
+        "k6 dropped 5979 iterations (max 0)",
+        "p99 291.60486551999975 ms > expected 120 ms"
+      ]
+    },
+    {
+      "run_id": "003_cap-fakeapi-r8000_none_r1",
+      "valid": false,
+      "invalid_reasons": [
+        "k6 dropped 949 iterations (max 0)",
+        "p99 159.3278013 ms > expected 120 ms"
+      ]
+    },
+    {
+      "run_id": "004_cap-fakeapi-r6000_none_r1",
+      "valid": false,
+      "invalid_reasons": [
+        "k6 dropped 121 iterations (max 0)"
+      ]
+    }
+  ],
+  "finished": {
+    "iso": "2026-11-17T19:34:36.606+00:00",
+    "epoch": 1794944076.607
+  }
+}

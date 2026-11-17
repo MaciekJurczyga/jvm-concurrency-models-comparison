@@ -1,0 +1,106 @@
+{
+  "series_id": "2026-11-17_smoke-capacity",
+  "run_id": "001_cap-k6-vus18000_none_r1",
+  "test": "cap-k6-vus18000",
+  "model": "none",
+  "rep": 1,
+  "index": 1,
+  "config": "cap-k6-vus18000/none",
+  "script": "warmup.js",
+  "endpoint": "/delay?ms=9000",
+  "base_url": "http://fake-api:8080",
+  "params": {
+    "RATE": 2000,
+    "DURATION_S": 30,
+    "PRE_VUS": 20000,
+    "MAX_VUS": 20000
+  },
+  "warmup": null,
+  "expect": {
+    "p99_max_ms": 9200,
+    "failed_rate_max": 0
+  },
+  "java_opts": "",
+  "k6": {
+    "request_timeout": "10s",
+    "raw_csv": true
+  },
+  "testid": "2026-11-17_smoke-capacity/001_cap-k6-vus18000_none_r1",
+  "git": {
+    "commit": "fccc0ff9980b84e00508e890566f8bb357cb6414",
+    "dirty": true,
+    "dirty_files": [
+      " M apps/mvc/src/main/java/pl/agh/jcmc/mvc/UpstreamErrorHandler.java",
+      " M apps/mvc/src/test/java/pl/agh/jcmc/mvc/UpstreamFailureTest.java",
+      " M load/lib/common.js",
+      " M load/scenarios/warmup.js",
+      " M runner/run_matrix.py",
+      "?? results/2026-11-17_smoke-capacity/",
+      "?? runner/contract_test.py",
+      "?? runner/smoke.yaml"
+    ]
+  },
+  "host": {
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Zr├│wnowa┼╝ony)",
+    "on_ac_power": true
+  },
+  "notes": "E6 capacity check; laptop on balanced power plan, other apps open",
+  "timestamps": {
+    "run_start": {
+      "iso": "2026-11-17T19:23:11.317+00:00",
+      "epoch": 1794943391.317
+    },
+    "run_end": {
+      "iso": "2026-11-17T19:23:56.578+00:00",
+      "epoch": 1794943436.579
+    },
+    "collected": {
+      "iso": "2026-11-17T19:24:01.947+00:00",
+      "epoch": 1794943441.947
+    }
+  },
+  "valid": false,
+  "invalid_reasons": [
+    "k6 dropped 397 iterations (max 0)",
+    "k6 CPU p95 377% > 320%",
+    "p99 10088.49202432 ms > expected 9200 ms",
+    "failed rate 0.05568324804966027 > expected 0"
+  ],
+  "sut": null,
+  "k6_exit_code": 0,
+  "sut_state_after": null,
+  "prometheus_export": {
+    "k6_rps_by_status": "2 series",
+    "k6_failed_rate": "1 series",
+    "k6_p50": "1 series",
+    "k6_p95": "1 series",
+    "k6_p99": "1 series",
+    "k6_vus": "1 series",
+    "k6_dropped_iterations": "1 series",
+    "sut_cpu": "0 series",
+    "sut_heap_used_bytes": "0 series",
+    "sut_nonheap_used_bytes": "0 series",
+    "sut_gc_pause_rate": "0 series",
+    "sut_gc_pause_count_rate": "0 series",
+    "sut_threads_live": "0 series",
+    "sut_threads_states": "0 series",
+    "sut_inflight_requests": "0 series",
+    "sut_rps_by_status": "0 series",
+    "sut_tomcat_busy_threads": "0 series",
+    "sut_tomcat_connections": "0 series",
+    "sut_executor_queued": "0 series",
+    "sut_executor_active": "0 series",
+    "fake_api_mean_latency": "4 series",
+    "fake_api_cpu": "1 series"
+  },
+  "k6_result": {
+    "http_reqs": 59605,
+    "http_req_failed_rate": 0.05568324804966027,
+    "p50_ms": 9001.695713,
+    "p99_ms": 10088.49202432,
+    "dropped_iterations": 397
+  },
+  "k6_cpu_p95_pct": 376.52,
+  "k6_mem_max_bytes": 4806068404.224,
+  "fake_api_cpu_p95_pct": 192.24
+}

@@ -60,7 +60,13 @@ python runner/run_matrix.py --dry-run                          # plan, order and
 python runner/run_matrix.py --only s1-io/platform --reps 1     # one configuration (series kind "dev")
 python runner/run_matrix.py --kind pilot --reps 3 --seed 42    # all 12 configurations
 python runner/run_matrix.py --only s2-cpu/virtual --set tests.s2-cpu.params.FLOOD_RATE=300
+
+python runner/contract_test.py                                  # identical responses from the 3 models (E6)
+python runner/run_matrix.py --config runner/smoke.yaml --kind smoke --only 's*'                       # 12 x 30 s
+python runner/run_matrix.py --config runner/smoke.yaml --kind smoke --label capacity --only 'cap-*'   # k6 / fake API limits
 ```
+
+On Windows, if image builds fail with `docker-credential-desktop not found`, reload the system `PATH` in the shell first.
 
 Parameters: `runner/experiments.yaml`. Each run: fresh SUT → warm-up (discarded) → scenario (`load/scenarios/s1_baseline.js` or `s2_flood.js`) → artifacts → validation → cool-down (DECISIONS.md, D18).
 Results layout and naming: [`results/README.md`](results/README.md).

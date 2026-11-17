@@ -1,0 +1,38 @@
+# Smoke series (E6): short correctness runs plus capacity checks of the load generator and the fake API.
+# Only differences from experiments.yaml are listed (deep merge, DECISIONS.md, D19).
+#   python runner/run_matrix.py --config runner/smoke.yaml --kind smoke --label capacity --only 'cap-*'
+#   python runner/run_matrix.py --config runner/smoke.yaml --kind smoke --only 's*'
+extends: experiments.yaml
+
+reps: 1
+cooldown_s: 10
+
+tests:
+  # Capacity checks: k6 straight at the fake API, no SUT (model "none").
+  # The fake API must keep its 100 ms delay at the highest /io rate a flood may use (plan section 4):
+  # 3-5x the platform-thread saturation (~2000 req/s, D18) gives up to ~10000 req/s.
+  cap-fakeapi-r6000: &cap_fakeapi
+    models: [none]
+    script: warmup.js
+    base_url: http://fake-api:8080
+    endpoint: /delay?ms=100
+    warmup: {rate: 2000, duration_s: 15}
+    params: {RATE: 6000, DURATION_S: 30, PRE_VUS: 1500, MAX_VUS: 6000}
+    # 100 ms delay + 20 ms tolerance for k6 scheduling and the Docker network.
+    expect: {p99_max_ms: 120, failed_rate_max: 0}
+  cap-fakeapi-r8000:
+    <<: *cap_fakeapi
+    params: {RATE: 8000, DURATION_S: 30, PRE_VUS: 2000, MAX_VUS: 8000}
+  cap-fakeapi-r10000:
+    <<: *cap_fakeapi
+    params: {RATE: 10000, DURATION_S: 30, PRE_VUS: 2500, MAX_VUS: 10000}
+  # In a flood the SUT stops answering and every request holds a k6 VU until the 10 s timeout, so k6 must sustain
+  # rate x latency concurrent VUs. 2000 req/s on a 9 s response = 18000 VUs, close to the placeholder MAX_VUS 20000.
+  cap-k6-vus18000:
+    models: [none]
+    script: warmup.js
+    base_url: http://fake-api:8080
+    endpoint: /delay?ms=9000
+    warmup: null
+    params: {RATE: 2000, DURATION_S: 30, PRE_VUS: 20000, MAX_VUS: 20000}
+    expect: {p99_max_ms: 9200, failed_rate_max: 0}

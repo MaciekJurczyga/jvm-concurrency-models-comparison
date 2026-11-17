@@ -1,0 +1,5 @@
+run_id,reason
+001_cap-k6-vus18000_none_r1,k6 dropped 397 iterations (max 0); k6 CPU p95 377% > 320%; p99 10088.49202432 ms > expected 9200 ms; failed rate 0.05568324804966027 > expected 0
+002_cap-fakeapi-r10000_none_r1,k6 dropped 20306 iterations (max 0); p99 491.16987870000037 ms > expected 120 ms
+003_cap-fakeapi-r8000_none_r1,k6 dropped 364 iterations (max 0); p99 217.21297924999993 ms > expected 120 ms
+004_cap-fakeapi-r6000_none_r1,k6 dropped 340 iterations (max 0); p99 207.4067644 ms > expected 120 ms

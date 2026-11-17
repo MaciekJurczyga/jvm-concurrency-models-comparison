@@ -1,0 +1,145 @@
+{
+  "series_id": "2026-11-17_rerun-smoke1117",
+  "run_id": "001_s2-io_platform_r1",
+  "test": "s2-io",
+  "model": "platform",
+  "rep": 1,
+  "index": 1,
+  "config": "s2-io/platform",
+  "script": "s2_flood.js",
+  "endpoint": "/io",
+  "base_url": null,
+  "params": {
+    "NORMAL_RATE": 500,
+    "FLOOD_RATE": 2200,
+    "BEFORE_S": 10,
+    "FLOOD_S": 10,
+    "AFTER_S": 10,
+    "PRE_VUS": 5000,
+    "MAX_VUS": 5000,
+    "NORMAL_PRE_VUS": 1000,
+    "NORMAL_MAX_VUS": 3000
+  },
+  "warmup": {
+    "rate": 200,
+    "duration_s": 15
+  },
+  "expect": null,
+  "java_opts": "",
+  "k6": {
+    "request_timeout": "10s",
+    "raw_csv": true
+  },
+  "testid": "2026-11-17_rerun-smoke1117/001_s2-io_platform_r1",
+  "git": {
+    "commit": "fccc0ff9980b84e00508e890566f8bb357cb6414",
+    "dirty": true,
+    "dirty_files": [
+      " M README.md",
+      " M apps/mvc/src/main/java/pl/agh/jcmc/mvc/UpstreamErrorHandler.java",
+      " M apps/mvc/src/test/java/pl/agh/jcmc/mvc/UpstreamFailureTest.java",
+      " M docs/DECISIONS.md",
+      " M load/lib/common.js",
+      " M load/scenarios/s2_flood.js",
+      " M load/scenarios/warmup.js",
+      " M results/README.md",
+      " M runner/experiments.yaml",
+      " M runner/run_matrix.py",
+      "?? results/2026-11-17_rerun-smoke1117/",
+      "?? results/2026-11-17_smoke-capacity-nocsv/",
+      "?? results/2026-11-17_smoke-capacity/",
+      "?? results/2026-11-17_smoke/",
+      "?? runner/contract_test.py",
+      "?? runner/smoke.yaml"
+    ]
+  },
+  "host": {
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Zr├│wnowa┼╝ony)",
+    "on_ac_power": true
+  },
+  "notes": "Rerun of 2026-11-17_smoke/011_s2-io_platform_r1 (dropped iterations once active VUs exceeded PRE_VUS 3000); PRE_VUS raised to 5000",
+  "timestamps": {
+    "sut_start": {
+      "iso": "2026-11-17T19:51:40.731+00:00",
+      "epoch": 1794945100.732
+    },
+    "sut_healthy": {
+      "iso": "2026-11-17T19:51:46.832+00:00",
+      "epoch": 1794945106.832
+    },
+    "warmup_start": {
+      "iso": "2026-11-17T19:51:47.062+00:00",
+      "epoch": 1794945107.063
+    },
+    "warmup_end": {
+      "iso": "2026-11-17T19:52:03.739+00:00",
+      "epoch": 1794945123.74
+    },
+    "run_start": {
+      "iso": "2026-11-17T19:52:03.813+00:00",
+      "epoch": 1794945123.813
+    },
+    "run_end": {
+      "iso": "2026-11-17T19:52:37.064+00:00",
+      "epoch": 1794945157.064
+    },
+    "collected": {
+      "iso": "2026-11-17T19:52:43.391+00:00",
+      "epoch": 1794945163.391
+    }
+  },
+  "valid": false,
+  "invalid_reasons": [
+    "k6 dropped 52 iterations (max 0)"
+  ],
+  "sut": {
+    "image_id": "sha256:7a2e195771595c6765019482053e23c4352f6334f7d114e763bb4d9dfef0f023",
+    "java_version": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)"
+  },
+  "warmup_exit_code": 0,
+  "k6_exit_code": 0,
+  "sut_state_after": {
+    "Status": "running",
+    "Running": true,
+    "OOMKilled": false,
+    "ExitCode": 0,
+    "StartedAt": "2026-11-17T19:51:41.138386183Z",
+    "FinishedAt": "0001-01-01T00:00:00Z",
+    "Error": ""
+  },
+  "prometheus_export": {
+    "k6_rps_by_status": "3 series",
+    "k6_failed_rate": "3 series",
+    "k6_p50": "1 series",
+    "k6_p95": "1 series",
+    "k6_p99": "1 series",
+    "k6_vus": "1 series",
+    "k6_dropped_iterations": "1 series",
+    "sut_cpu": "1 series",
+    "sut_heap_used_bytes": "1 series",
+    "sut_nonheap_used_bytes": "1 series",
+    "sut_gc_pause_rate": "1 series",
+    "sut_gc_pause_count_rate": "1 series",
+    "sut_threads_live": "1 series",
+    "sut_threads_states": "6 series",
+    "sut_inflight_requests": "1 series",
+    "sut_rps_by_status": "1 series",
+    "sut_tomcat_busy_threads": "1 series",
+    "sut_tomcat_connections": "1 series",
+    "sut_executor_queued": "1 series",
+    "sut_executor_active": "1 series",
+    "fake_api_mean_latency": "1 series",
+    "fake_api_max_latency": "1 series",
+    "fake_api_cpu": "1 series"
+  },
+  "k6_result": {
+    "http_reqs": 31949,
+    "http_req_failed_rate": 0,
+    "p50_ms": 1197.505204,
+    "p99_ms": 2185.60265128,
+    "dropped_iterations": 52
+  },
+  "k6_cpu_p95_pct": 306.27,
+  "k6_mem_max_bytes": 1740535496.704,
+  "fake_api_cpu_p95_pct": 98.11
+}

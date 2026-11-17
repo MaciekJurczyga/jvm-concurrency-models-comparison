@@ -40,7 +40,8 @@ export const commonOptions = {
   summaryTrendStats: ['min', 'med', 'avg', 'p(90)', 'p(95)', 'p(99)', 'max'],
 };
 
-// The runner passes SUMMARY_PATH (results/<series>/<run>/...); without it k6 prints its usual summary.
+// The runner passes SUMMARY_PATH (results/<series>/<run>/...). Without it nothing is printed: an exported
+// handleSummary replaces the default end-of-test summary, so manual checks read metrics in Prometheus/Grafana.
 export function handleSummary(data) {
   if (!__ENV.SUMMARY_PATH) {
     return {};

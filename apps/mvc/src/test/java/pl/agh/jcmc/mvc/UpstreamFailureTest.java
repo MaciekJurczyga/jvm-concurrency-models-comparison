@@ -40,6 +40,8 @@ class UpstreamFailureTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(504);
         assertThat(response.getBody()).isEqualTo("{\"error\":\"upstream_timeout\"}");
+        // Same framing as WebFlux, not chunked (contract test, DECISIONS.md, D19).
+        assertThat(response.getHeaders().getContentLength()).isEqualTo(28);
         assertThat(elapsedMs).isLessThan(1000);
     }
 
@@ -51,5 +53,6 @@ class UpstreamFailureTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(502);
         assertThat(response.getBody()).isEqualTo("{\"error\":\"upstream_error\"}");
+        assertThat(response.getHeaders().getContentLength()).isEqualTo(26);
     }
 }

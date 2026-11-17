@@ -149,5 +149,48 @@ Grouping runs into series (one runner invocation, one seed) replaces the flat `r
 - The per-request CSV has about 13 rows per request: 148 MB (gz) for one 20-minute S1-IO run, i.e. several GB for the full matrix. k6 CPU p95 was 106 % of 400 %, so it is affordable CPU-wise; decide in E7 whether to keep it (`k6.raw_csv`).
 - With the placeholder parameters the full matrix (60 runs) is estimated at about 15.7 h, well above the planned 8–10 h. Mostly S1-IO: 20 steps × 60 s = 20 min per run. Calibration must shorten S1 (narrower range or shorter steps).
 
+## D19. Smoke tests: contract test, capacity checks, 12 short runs — accepted (2026-11-17)
+
+**Contract test** (`runner/contract_test.py`). Each model is started fresh in Compose and probed from the host. Compared per case: status, `Content-Type`, body bytes, framing (`Content-Length` vs chunked), against a fixed expected body as well as across models. Cases: `/io` → 200 `{"upstreamDelayMs":100}` (23 B), `/cpu` → 200 `{"matches":true}` (16 B), upstream port closed → 502 `{"error":"upstream_error"}` (26 B), upstream slower than the timeout (`IO_DELAY_MS=3000`, `UPSTREAM_TIMEOUT=1s`, test-only override file) → 504 `{"error":"upstream_timeout"}` (28 B). It also checks health, the `model` tag in `/actuator/prometheus` and the thread kind via `/diag/thread`.
+Two findings, both fixed:
+- MVC sent the 502/504 bodies **chunked**, WebFlux with `Content-Length`. The `ResponseEntity` return path flushes the response before Tomcat knows the length. The handler now sets the status on `HttpServletResponse` and returns the record, like `/io`; the MVC test asserts `Content-Length`. Bodies and status codes were already identical; only the framing (and so the bytes on the wire for error responses in S2) differed.
+- Stopping the fake API does not produce a 502: Docker DNS for a stopped container does not fail fast, so all three models waited for the timeout and answered 504. The 502 case therefore points the SUT at a closed port (`http://fake-api:9`, connection refused).
+Report: `results/2026-11-17_smoke-contract/contract_report.json`.
+
+**Runner extensions** for the smoke series (no change to how measured runs execute):
+- `extends:` in a config file, deep-merged into the base. `runner/smoke.yaml` lists only differences from `experiments.yaml`, and both files are snapshotted into the series directory.
+- Capacity checks without a SUT: a test may declare `models: [none]` and `base_url` (k6 then targets the fake API directly), `warmup: null`, and `expect` (`p99_max_ms`, `failed_rate_max`, extra validity conditions). `--only` accepts globs (`'cap-*'`, `s1-io` = all models).
+- `meta.json` also records the k6 container's peak memory and the fake API container's CPU p95. Prometheus export adds `fake_api_max_latency`.
+- `s2_flood.js`: separate `NORMAL_PRE_VUS` for the before/after phases. Each phase is its own k6 scenario with its own VU pool, all preallocated at start, so one `PRE_VUS` for all three phases tripled k6 memory. `warmup.js` accepts `PRE_VUS`.
+
+**Capacity checks** (series `2026-11-17_smoke-capacity` with k6 raw CSV, `…-capacity-nocsv` without; k6 straight at `fake-api/delay?ms=100`, 30 s at a constant rate after a 15 s warm-up; laptop on the balanced power plan, so indicative only). All runs failed their strict criteria (0 dropped, p99 ≤ 120 ms):
+
+| rate | raw CSV | k6 p50 / p99 | dropped | k6 CPU p95 (of 400 %) | k6 mem | fake API mean latency (max of 1 s windows) | fake API `process_cpu_usage` max |
+|---|---|---|---|---|---|---|---|
+| 6000/s | yes | 101 / 207 ms | 340 | 260 % | 754 MB | 102 ms | 0.83 |
+| 6000/s | no | 100 / 113 ms | 121 | 211 % | 504 MB | 100 ms | 0.45 |
+| 8000/s | yes | 101 / 217 ms | 364 | 261 % | 1019 MB | 101 ms | 0.70 |
+| 8000/s | no | 100 / 159 ms | 949 | 255 % | 643 MB | 101 ms | 0.77 |
+| 10000/s | yes | 108 / 491 ms | 20306 | 320 % | 1480 MB | 104 ms | 0.98 |
+| 10000/s | no | 101 / 292 ms | 5979 | 304 % | 821 MB | 102 ms | 0.89 |
+
+Conclusions:
+1. **Fake API** keeps its delay on the server side (mean 100–104 ms) up to 10000/s, but on its 2 CPUs it is close to saturation at 10000/s. Up to about 8000/s it is not the bottleneck.
+2. **k6 raw CSV** costs latency accuracy: at 6000/s client p99 goes from 113 ms to 207 ms, and k6 memory grows throughout the run. Decide in E7 (recommendation: off for S2-IO; Prometheus native histograms + summary give the per-window percentiles).
+3. **Dropped iterations at scenario start.** At 6000–8000/s k6 drops ~120–360 iterations in the first second(s) of a constant-rate scenario although most preallocated VUs are idle; at 8000/s there were also mid-run bursts with a VU spike. Under the strict rule (0 dropped) every high-rate run, including each S2 flood start, would be invalid. E7 decision: a relative limit (e.g. ≤ 0.1 % of iterations) or a short ramp at phase start.
+4. **Harness tail at high rates.** Even without CSV, client p99 at 8000/s is ~130–160 ms against a server-side 100 ms. S1-IO saturation thresholds (p99 < X ms) must sit well above this, or S1-IO must stay below ~6000/s.
+5. **k6 VU capacity** (`cap-k6-vus18000`: 2000/s on a 9 s response = 18000 concurrent requests, 20000 preallocated VUs): ~4.1–4.8 GB of k6 memory (~240 KB per VU), k6 CPU saturated (p95 377–394 %), p50 9.0–9.8 s instead of 9.0 s, 6–62 % timeouts while all 18000 connections open within 9 s. Steady state after that held (p50 ≈ 9.0 s). About 15000–20000 pending requests is the upper bound of the load generator on this laptop. In an S2 flood that the SUT does not absorb, k6 needs `rate × request timeout` VUs (e.g. 4000/s × 10 s = 40000), which is out of reach. E7 must bound flood rate × timeout (a shorter k6 timeout, a lower flood rate, or accepting drops in the flood phase as a documented limitation).
+
+**Smoke series** `2026-11-17_smoke` (12 configurations × 1, 30 s scenario after a 15 s warm-up, `runner/smoke.yaml`; S1 in three 10 s steps, S2 as 10 s before / 10 s flood / 10 s after; floods at /io 2200/s and /cpu 80/s). Every run produced a complete directory (summary, raw CSV, 23 Prometheus exports without errors, docker stats, logs, `meta.json`). No SUT crashed. 11 of 12 runs were valid on the first try:
+- S1-IO (500→1500/s): p99 107–113 ms in all three models; S1-CPU (10→40/s): p50 61–62 ms, p99 79–90 ms;
+- S2-CPU: p99 4.1 s (reactive), 4.5 s (virtual), 6.7 s (platform), no errors; S2-IO: p99 133 ms (reactive), 230 ms (virtual), no errors.
+- `011_s2-io_platform_r1` was **invalid**: 415 dropped iterations once active flood VUs reached `PRE_VUS` = 3000 (platform p50 ≈ 1.4 s at 2200/s needs ~3100 VUs, and k6 adds VUs mid-test too slowly, D18). Rerun `2026-11-17_rerun-smoke1117` (`PRE_VUS` 5000): 52 dropped at the start of the `after` phase (the post-flood backlog made after-phase requests take ~2 s, and 500/s × 2 s > `NORMAL_PRE_VUS` 1000). Rerun `2026-11-17_rerun-smoke1117-2` (`PRE_VUS` 5000, `NORMAL_PRE_VUS` 2500): valid, but 1808 k6 timeouts (5.6 %) in the `after` phase, explained below.
+
+Findings from the smoke series for E7:
+6. **Every preallocated VU opens its own keep-alive connection.** k6 rotates iterations over the whole VU pool, so with `NORMAL_PRE_VUS` 2500 Tomcat already held 2502 connections before the flood at 500/s, 7502 during it, and the new after-phase VUs pushed it past `max-connections` = 8192. The surplus waited in the accept queue (`accept-count` 100) and timed out after 10 s. The first run, with ~5000 connections in total, had no errors. **The number of TCP connections to the SUT is set by k6's VU budget, not by the load**, and it interacts directly with Tomcat's `max-connections` (H1/H3, D9). E7 has to set VU budgets deliberately (identical for all models within a test) and report the connection count, or change connection reuse in k6.
+7. **Each phase needs `rate × worst latency` preallocated VUs**, including the `after` phase (post-flood backlog), otherwise k6 drops iterations.
+8. **SUT metrics have gaps under overload in the platform model.** The Prometheus scrape of `/actuator/prometheus` waits in the same 200-thread Tomcat pool and misses its 1 s timeout, so `sut_*` series are empty during the platform flood (e.g. 6 s gap in `011`). Client-side k6 metrics are unaffected. Options for E7: separate management port (own connector/thread pool), longer scrape timeout, or accept and document the gap.
+
 ## Open
 - S2 rate values, phase lengths, k6 VU budgets, OOM behaviour (D6) — calibrate in the pilot (E7).
+- From D19: raw CSV on/off, rule for dropped iterations at phase start, harness tail vs S1-IO threshold, flood rate × timeout vs k6 VU capacity, connection count set by k6 VU budgets vs Tomcat `max-connections`, per-phase VU preallocation, SUT scrape gaps in the platform model.

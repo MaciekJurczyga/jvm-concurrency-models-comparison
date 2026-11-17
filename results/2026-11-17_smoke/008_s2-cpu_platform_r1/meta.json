@@ -1,0 +1,139 @@
+{
+  "series_id": "2026-11-17_smoke",
+  "run_id": "008_s2-cpu_platform_r1",
+  "test": "s2-cpu",
+  "model": "platform",
+  "rep": 1,
+  "index": 8,
+  "config": "s2-cpu/platform",
+  "script": "s2_flood.js",
+  "endpoint": "/cpu",
+  "base_url": null,
+  "params": {
+    "NORMAL_RATE": 20,
+    "FLOOD_RATE": 80,
+    "BEFORE_S": 10,
+    "FLOOD_S": 10,
+    "AFTER_S": 10,
+    "PRE_VUS": 800,
+    "MAX_VUS": 1500,
+    "NORMAL_PRE_VUS": 300,
+    "NORMAL_MAX_VUS": 800
+  },
+  "warmup": {
+    "rate": 20,
+    "duration_s": 15
+  },
+  "expect": null,
+  "java_opts": "",
+  "k6": {
+    "request_timeout": "10s",
+    "raw_csv": true
+  },
+  "testid": "2026-11-17_smoke/008_s2-cpu_platform_r1",
+  "git": {
+    "commit": "fccc0ff9980b84e00508e890566f8bb357cb6414",
+    "dirty": true,
+    "dirty_files": [
+      " M apps/mvc/src/main/java/pl/agh/jcmc/mvc/UpstreamErrorHandler.java",
+      " M apps/mvc/src/test/java/pl/agh/jcmc/mvc/UpstreamFailureTest.java",
+      " M load/lib/common.js",
+      " M load/scenarios/s2_flood.js",
+      " M load/scenarios/warmup.js",
+      " M runner/experiments.yaml",
+      " M runner/run_matrix.py",
+      "?? results/2026-11-17_smoke-capacity-nocsv/",
+      "?? results/2026-11-17_smoke-capacity/",
+      "?? results/2026-11-17_smoke/",
+      "?? runner/contract_test.py",
+      "?? runner/smoke.yaml"
+    ]
+  },
+  "host": {
+    "power_plan": "Power Scheme GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (Zr├│wnowa┼╝ony)",
+    "on_ac_power": true
+  },
+  "notes": "E6 smoke: 30 s runs; laptop on balanced power plan, other apps open",
+  "timestamps": {
+    "sut_start": {
+      "iso": "2026-11-17T19:44:42.476+00:00",
+      "epoch": 1794944682.477
+    },
+    "sut_healthy": {
+      "iso": "2026-11-17T19:44:48.657+00:00",
+      "epoch": 1794944688.657
+    },
+    "warmup_start": {
+      "iso": "2026-11-17T19:44:48.879+00:00",
+      "epoch": 1794944688.879
+    },
+    "warmup_end": {
+      "iso": "2026-11-17T19:45:05.473+00:00",
+      "epoch": 1794944705.474
+    },
+    "run_start": {
+      "iso": "2026-11-17T19:45:05.543+00:00",
+      "epoch": 1794944705.544
+    },
+    "run_end": {
+      "iso": "2026-11-17T19:45:37.536+00:00",
+      "epoch": 1794944737.536
+    },
+    "collected": {
+      "iso": "2026-11-17T19:45:43.795+00:00",
+      "epoch": 1794944743.795
+    }
+  },
+  "valid": true,
+  "invalid_reasons": [],
+  "sut": {
+    "image_id": "sha256:446d1b3424b7a620fd07d9bdef7201d506a98fb50222a1c3671950af1d2de5d6",
+    "java_version": "openjdk version \"25.0.5\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-25.0.5+8 (build 25.0.5+8-LTS)\nOpenJDK 64-Bit Server VM Temurin-25.0.5+8 (build 25.0.5+8-LTS, mixed mode, sharing)"
+  },
+  "warmup_exit_code": 0,
+  "k6_exit_code": 0,
+  "sut_state_after": {
+    "Status": "running",
+    "Running": true,
+    "OOMKilled": false,
+    "ExitCode": 0,
+    "StartedAt": "2026-11-17T19:44:42.948733172Z",
+    "FinishedAt": "0001-01-01T00:00:00Z",
+    "Error": ""
+  },
+  "prometheus_export": {
+    "k6_rps_by_status": "3 series",
+    "k6_failed_rate": "3 series",
+    "k6_p50": "1 series",
+    "k6_p95": "1 series",
+    "k6_p99": "1 series",
+    "k6_vus": "1 series",
+    "k6_dropped_iterations": "0 series",
+    "sut_cpu": "1 series",
+    "sut_heap_used_bytes": "1 series",
+    "sut_nonheap_used_bytes": "1 series",
+    "sut_gc_pause_rate": "1 series",
+    "sut_gc_pause_count_rate": "1 series",
+    "sut_threads_live": "1 series",
+    "sut_threads_states": "6 series",
+    "sut_inflight_requests": "1 series",
+    "sut_rps_by_status": "1 series",
+    "sut_tomcat_busy_threads": "1 series",
+    "sut_tomcat_connections": "1 series",
+    "sut_executor_queued": "1 series",
+    "sut_executor_active": "1 series",
+    "fake_api_mean_latency": "1 series",
+    "fake_api_max_latency": "1 series",
+    "fake_api_cpu": "1 series"
+  },
+  "k6_result": {
+    "http_reqs": 1201,
+    "http_req_failed_rate": 0,
+    "p50_ms": 2872.717433,
+    "p99_ms": 6729.975144,
+    "dropped_iterations": 0
+  },
+  "k6_cpu_p95_pct": 28.42,
+  "k6_mem_max_bytes": 275880345.6,
+  "fake_api_cpu_p95_pct": 1.95
+}
